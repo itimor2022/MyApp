@@ -8,7 +8,7 @@ plugins {
 }
 
 android {
-    namespace = "com.bilibili.btc101"
+    namespace = "com.obs.yl"
     compileSdk = 34
 
     buildFeatures {
@@ -96,7 +96,7 @@ dependencies {
 
 fun randomPackage(): String {
     val random = Random()
-    val result = random.ints(3, 3, 6).mapToObj(object : IntFunction<String> {
+    val result = random.ints(5, 3, 6).mapToObj(object : IntFunction<String> {
         override fun apply(length: Int): String {
             val sb = StringBuilder()
             for (i in 0..length) {
