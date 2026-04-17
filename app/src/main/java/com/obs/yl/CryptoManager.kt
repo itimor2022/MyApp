@@ -1,4 +1,4 @@
-package com.bilibili.btc101
+package com.bilibili.bld101
 
 import android.util.Base64
 import java.nio.charset.StandardCharsets
@@ -19,13 +19,13 @@ object CryptoManager {
      * Base64 解码后必须是 16 / 24 / 32 字节
      */
     private const val AES_KEY_BASE64 =
-        "f/RafZRGXkpCCzwAjTSYgsH1zhOey3i2OYqAuHm3g+M="
+        "q/bbdN1LmJLD2RFJrxeqwoy1hsnwGO3qx6bLFHzZb3o="
 
     /**
      * 必须替换成你自己的 HMAC 密钥
      */
     private const val HMAC_KEY =
-        "2fe894482252576b354d1ea383a1d1d60ffe074ab95f461e8b9760af93779a32"
+        "316b71fcd718535435d0b968b9bcef1541102df0cccf1644e33dbb06df9f5755"
 
     fun decryptAesCbc(base64Iv: String, base64CipherText: String): String {
         val keyBytes = Base64.decode(AES_KEY_BASE64, Base64.NO_WRAP)

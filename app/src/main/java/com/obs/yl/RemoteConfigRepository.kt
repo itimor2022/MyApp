@@ -1,4 +1,4 @@
-package com.bilibili.btc101
+package com.bilibili.bld101
 
 import android.content.Context
 import android.util.Log
@@ -45,19 +45,18 @@ class RemoteConfigRepository(
             "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/123.0 Mobile Safari/537.36"
 
         private val OSS_URLS = listOf(
-            "https://cd-1334056550.cos.ap-chongqing.myqcloud.com/sjd/config.json",
-            "https://bj-1334056550.cos.ap-beijing.myqcloud.com/sjd/config.json",
-            "https://bj-1334056550.cos.ap-beijing.myqcloud.com/sjd/config.json",
-            "https://cj-1369911702.cos.ap-chongqing.myqcloud.com/sjd/config.json"
+            "https://cd-1334056550.cos.ap-chongqing.myqcloud.com/bld/config.json",
+            "https://bj-1334056550.cos.ap-beijing.myqcloud.com/bld/config.json",
+            "https://bj-1334056550.cos.ap-beijing.myqcloud.com/bld/config.json",
+            "https://cj-1369911702.cos.ap-chongqing.myqcloud.com/bld/config.json"
         )
 
         private val DNS_TXT_DOMAINS = listOf(
-            "cx.xy422.cc",
-            "ct.xy410.cc"
+            "ct.vt6q.icu",
         )
 
         private val LOCAL_FALLBACK_DOMAINS = listOf(
-            DomainItem("https://43.252.161.191", 100),
+            DomainItem("https://66.212.58.219", 100),
         )
 
         private fun defaultHttpClient(): OkHttpClient {
