@@ -45,10 +45,10 @@ class RemoteConfigRepository(
             "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/123.0 Mobile Safari/537.36"
 
         private val OSS_URLS = listOf(
-            "https://cd-1334056550.cos.ap-chongqing.myqcloud.com/sjd/config.json",
-            "https://bj-1334056550.cos.ap-beijing.myqcloud.com/sjd/config.json",
-            "https://bj-1334056550.cos.ap-beijing.myqcloud.com/sjd/config.json",
-            "https://cj-1369911702.cos.ap-chongqing.myqcloud.com/sjd/config.json"
+            "https://cj-1398539102.cos.ap-chongqing.myqcloud.com/btc/config.json",
+            "https://nj-1398539102.cos.ap-nanjing.myqcloud.com/btc/config.json",
+            "https://gz-1398539102.cos.ap-guangzhou.myqcloud.com/btc/config.json",
+            "https://cd-1398539102.cos.ap-chengdu.myqcloud.com/btc/config.json"
         )
 
         private val DNS_TXT_DOMAINS = listOf(
