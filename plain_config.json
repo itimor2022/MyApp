@@ -1,0 +1,19 @@
+{
+  "version": 5,
+  "timestamp": 1775297481,
+  "expire_at": 1775902281,
+  "data": {
+    "domains": [
+      {
+        "url": "https://btc-web.qg1a.com",
+        "weight": 10
+      },
+      {
+        "url": "https://cips-admin.byphsz.cyou",
+        "weight": 6
+      }
+    ],
+    "feature_x": true,
+    "gray_ratio": 20
+  }
+}

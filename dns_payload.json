@@ -1,0 +1,14 @@
+{
+  "backup_config_url": "",
+  "domains": [
+    {
+      "url": "https://my.vultr.com/",
+      "weight": 10
+    },
+    {
+      "url": "https://blog.51cto.com",
+      "weight": 8
+    }
+  ],
+  "expire_at": 1775902281
+}
