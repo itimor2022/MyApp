@@ -8,7 +8,7 @@ plugins {
 }
 
 android {
-    namespace = "com.bilibili.btc101"
+    namespace = "com.obs.yl"
     compileSdk = 34
 
     buildFeatures {
@@ -33,11 +33,11 @@ android {
     }
 
     defaultConfig {
-        applicationId = randomPackage()
+        applicationId = "yyds.douyu.bld10"
         minSdk = 24
         targetSdk = 34
         versionCode = 1
-        versionName = "1.0"
+        versionName = "1.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

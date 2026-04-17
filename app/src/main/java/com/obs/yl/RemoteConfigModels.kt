@@ -1,4 +1,4 @@
-package com.bilibili.bld101
+package com.obs.yl
 
 import com.google.gson.annotations.SerializedName
 
