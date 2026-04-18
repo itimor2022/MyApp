@@ -1,5 +1,6 @@
 package com.obs.yl
 
+import android.app.Activity
 import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
@@ -8,6 +9,7 @@ import android.os.Bundle
 import android.view.MotionEvent
 import android.view.View
 import android.webkit.SslErrorHandler
+import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
@@ -20,6 +22,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.addCallback
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import com.drake.net.utils.TipUtils
 import com.google.gson.Gson
@@ -40,6 +43,12 @@ class MainActivity : AppCompatActivity() {
 
     protected var mSwipeBackHelper: SwipeBackHelper? = null
 
+    // 文件上传相关
+    private var uploadMessage: ValueCallback<Uri>? = null
+    private var uploadMessageAboveL: ValueCallback<Array<Uri>>? = null
+    private val FILECHOOSER_RESULTCODE = 1
+    private val REQUEST_SELECT_FILES = 2
+
     private val gson by lazy { Gson() }
     private val repository by lazy { RemoteConfigRepository(applicationContext, App.httpClient) }
     private val uiScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -54,6 +63,19 @@ class MainActivity : AppCompatActivity() {
     private var currentLoadToken = 0L
 
     private var probeJob: Job? = null
+
+    // 文件选择结果处理
+    private val filePickerLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (uploadMessageAboveL != null) {
+            handleFileUploadResult(result.resultCode, result.data, uploadMessageAboveL)
+            uploadMessageAboveL = null
+        } else if (uploadMessage != null) {
+            handleFileUploadResultLegacy(result.resultCode, result.data, uploadMessage)
+            uploadMessage = null
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -128,15 +150,47 @@ class MainActivity : AppCompatActivity() {
         setting.cacheMode = WebSettings.LOAD_DEFAULT
         setting.useWideViewPort = true
         setting.loadWithOverviewMode = true
-        setting.allowFileAccess = false
-        setting.allowContentAccess = false
+        setting.allowFileAccess = true  // 允许文件访问
+        setting.allowContentAccess = true  // 允许内容访问
+
+        // 设置文件上传相关
         setting.setSupportZoom(false)
         setting.builtInZoomControls = false
         setting.displayZoomControls = false
 
         wb.isHorizontalScrollBarEnabled = false
         wb.isVerticalScrollBarEnabled = false
-        wb.webChromeClient = WebChromeClient()
+        wb.webChromeClient = object : WebChromeClient() {
+
+            // Android 3.0+
+            fun openFileChooser(uploadMsg: ValueCallback<Uri>) {
+                uploadMessage = uploadMsg
+                openFileChooser()
+            }
+
+            // Android 3.0+
+            fun openFileChooser(uploadMsg: ValueCallback<Uri>, acceptType: String) {
+                uploadMessage = uploadMsg
+                openFileChooser()
+            }
+
+            // Android 4.1+
+            fun openFileChooser(uploadMsg: ValueCallback<Uri>, acceptType: String, capture: String) {
+                uploadMessage = uploadMsg
+                openFileChooser()
+            }
+
+            // Android 5.0+
+            override fun onShowFileChooser(
+                webView: WebView?,
+                filePathCallback: ValueCallback<Array<Uri>>,
+                fileChooserParams: FileChooserParams
+            ): Boolean {
+                uploadMessageAboveL = filePathCallback
+                openFileChooser()
+                return true
+            }
+        }
 
         wb.webViewClient = object : WebViewClient() {
 
@@ -156,11 +210,6 @@ class MainActivity : AppCompatActivity() {
                 val finishedUrl = url.orEmpty()
                 if (finishedUrl.isBlank()) return
 
-                /**
-                 * 关键修复：
-                 * 有些站点返回 200，但标题/正文写的是 404
-                 * 这里再做一次前端内容检测
-                 */
                 view?.evaluateJavascript(
                     """
                     (function() {
@@ -271,6 +320,52 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // 打开文件选择器
+    private fun openFileChooser() {
+        val i = Intent(Intent.ACTION_GET_CONTENT)
+        i.addCategory(Intent.CATEGORY_OPENABLE)
+        i.type = "image/*"  // 可以修改为 "*/*" 允许所有类型，或 "image/*,video/*" 等
+        filePickerLauncher.launch(i)
+    }
+
+    // Android 5.0+ 处理文件上传结果
+    private fun handleFileUploadResult(resultCode: Int, data: Intent?, uploadMessage: ValueCallback<Array<Uri>>?) {
+        if (uploadMessage == null) return
+
+        var results: Array<Uri>? = null
+
+        if (resultCode == Activity.RESULT_OK && data != null) {
+            val dataString = data.dataString
+            val clipData = data.clipData
+
+            if (clipData != null) {
+                results = Array(clipData.itemCount) { i ->
+                    clipData.getItemAt(i).uri
+                }
+            } else if (dataString != null) {
+                results = arrayOf(Uri.parse(dataString))
+            }
+        }
+
+        uploadMessage.onReceiveValue(results)
+    }
+
+    // 低版本处理文件上传结果
+    private fun handleFileUploadResultLegacy(resultCode: Int, data: Intent?, uploadMessage: ValueCallback<Uri>?) {
+        if (uploadMessage == null) return
+
+        var result: Uri? = null
+
+        if (resultCode == Activity.RESULT_OK && data != null) {
+            val dataString = data.dataString
+            if (dataString != null) {
+                result = Uri.parse(dataString)
+            }
+        }
+
+        uploadMessage.onReceiveValue(result)
+    }
+
     private fun retryBootFlow() {
         bootResolved = false
         mainFrameFailed = false
@@ -367,6 +462,12 @@ class MainActivity : AppCompatActivity() {
         } ?: super.dispatchTouchEvent(ev)
 
     override fun onDestroy() {
+        // 清理文件上传回调
+        uploadMessage?.onReceiveValue(null)
+        uploadMessageAboveL?.onReceiveValue(null)
+        uploadMessage = null
+        uploadMessageAboveL = null
+
         probeJob?.cancel()
         uiScope.cancel()
         runCatching {
