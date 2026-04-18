@@ -1,13 +1,19 @@
 package com.obs.yl
 
+import android.app.Activity
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.net.Uri
 import android.net.http.SslError
+import android.os.Build
 import android.os.Bundle
+import android.os.Environment
+import android.provider.MediaStore
 import android.view.MotionEvent
 import android.view.View
 import android.webkit.SslErrorHandler
+import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
@@ -20,7 +26,10 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.addCallback
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import com.drake.net.utils.TipUtils
 import com.google.gson.Gson
 import kotlinx.coroutines.CoroutineScope
@@ -29,6 +38,11 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import java.io.File
+import java.io.IOException
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class MainActivity : AppCompatActivity() {
 
@@ -39,6 +53,12 @@ class MainActivity : AppCompatActivity() {
     private lateinit var llError: LinearLayout
 
     protected var mSwipeBackHelper: SwipeBackHelper? = null
+
+    // 图片上传相关
+    private var uploadMessage: ValueCallback<Uri>? = null
+    private var uploadMessageAboveL: ValueCallback<Array<Uri>>? = null
+    private var cameraPhotoPath: String? = null
+    private val REQUEST_CAMERA_PERMISSION = 100
 
     private val gson by lazy { Gson() }
     private val repository by lazy { RemoteConfigRepository(applicationContext, App.httpClient) }
@@ -54,6 +74,13 @@ class MainActivity : AppCompatActivity() {
     private var currentLoadToken = 0L
 
     private var probeJob: Job? = null
+
+    // 图片选择结果处理
+    private val imagePickerLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        handleImageUploadResult(result.resultCode, result.data)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -128,15 +155,53 @@ class MainActivity : AppCompatActivity() {
         setting.cacheMode = WebSettings.LOAD_DEFAULT
         setting.useWideViewPort = true
         setting.loadWithOverviewMode = true
-        setting.allowFileAccess = false
-        setting.allowContentAccess = false
+        setting.allowFileAccess = true  // 允许文件访问（图片上传需要）
+        setting.allowContentAccess = true  // 允许内容访问（图片上传需要）
+
+        // 支持图片上传的额外设置
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            setting.allowFileAccessFromFileURLs = true
+            setting.allowUniversalAccessFromFileURLs = true
+        }
+
         setting.setSupportZoom(false)
         setting.builtInZoomControls = false
         setting.displayZoomControls = false
 
         wb.isHorizontalScrollBarEnabled = false
         wb.isVerticalScrollBarEnabled = false
-        wb.webChromeClient = WebChromeClient()
+
+        wb.webChromeClient = object : WebChromeClient() {
+
+            // Android 3.0+ (兼容低版本)
+            fun openFileChooser(uploadMsg: ValueCallback<Uri>) {
+                uploadMessage = uploadMsg
+                openImageChooser()
+            }
+
+            // Android 3.0+
+            fun openFileChooser(uploadMsg: ValueCallback<Uri>, acceptType: String) {
+                uploadMessage = uploadMsg
+                openImageChooser()
+            }
+
+            // Android 4.1+
+            fun openFileChooser(uploadMsg: ValueCallback<Uri>, acceptType: String, capture: String) {
+                uploadMessage = uploadMsg
+                openImageChooser()
+            }
+
+            // Android 5.0+
+            override fun onShowFileChooser(
+                webView: WebView?,
+                filePathCallback: ValueCallback<Array<Uri>>,
+                fileChooserParams: FileChooserParams
+            ): Boolean {
+                uploadMessageAboveL = filePathCallback
+                openImageChooser()
+                return true
+            }
+        }
 
         wb.webViewClient = object : WebViewClient() {
 
@@ -156,11 +221,6 @@ class MainActivity : AppCompatActivity() {
                 val finishedUrl = url.orEmpty()
                 if (finishedUrl.isBlank()) return
 
-                /**
-                 * 关键修复：
-                 * 有些站点返回 200，但标题/正文写的是 404
-                 * 这里再做一次前端内容检测
-                 */
                 view?.evaluateJavascript(
                     """
                     (function() {
@@ -271,6 +331,145 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // 打开图片选择器（拍照或从相册选择）
+    private fun openImageChooser() {
+        // 检查相机权限
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.CAMERA)
+                != PackageManager.PERMISSION_GRANTED
+            ) {
+                requestPermissions(arrayOf(android.Manifest.permission.CAMERA), REQUEST_CAMERA_PERMISSION)
+                return
+            }
+        }
+
+        showImagePickerDialog()
+    }
+
+    // 显示图片选择对话框
+    private fun showImagePickerDialog() {
+        val intentList = ArrayList<Intent>()
+
+        // 拍照意图
+        val takePhotoIntent = Intent(MediaStore.ACTION_IMAGE_CAPTURE)
+        if (takePhotoIntent.resolveActivity(packageManager) != null) {
+            val photoFile = createImageFile()
+            if (photoFile != null) {
+                cameraPhotoPath = photoFile.absolutePath
+                val photoUri = FileProvider.getUriForFile(
+                    this,
+                    "${packageName}.fileprovider",
+                    photoFile
+                )
+                takePhotoIntent.putExtra(MediaStore.EXTRA_OUTPUT, photoUri)
+                intentList.add(takePhotoIntent)
+            }
+        }
+
+        // 从相册选择
+        val galleryIntent = Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
+        galleryIntent.type = "image/*"
+
+        val chooserIntent = Intent.createChooser(galleryIntent, "选择图片")
+
+        if (intentList.isNotEmpty()) {
+            intentList.add(0, galleryIntent)
+            val extraIntents = intentList.drop(1).toTypedArray()
+            chooserIntent.putExtra(Intent.EXTRA_INITIAL_INTENTS, extraIntents)
+        }
+
+        imagePickerLauncher.launch(chooserIntent)
+    }
+
+    // 创建临时图片文件
+    private fun createImageFile(): File? {
+        return try {
+            val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+            val imageFileName = "JPEG_${timeStamp}_"
+            val storageDir = getExternalFilesDir(Environment.DIRECTORY_PICTURES)
+            File.createTempFile(imageFileName, ".jpg", storageDir).apply {
+                cameraPhotoPath = absolutePath
+            }
+        } catch (e: IOException) {
+            e.printStackTrace()
+            null
+        }
+    }
+
+    // 处理图片上传结果
+    private fun handleImageUploadResult(resultCode: Int, data: Intent?) {
+        // 处理拍照的图片
+        if (resultCode == Activity.RESULT_OK && cameraPhotoPath != null) {
+            val photoFile = File(cameraPhotoPath!!)
+            if (photoFile.exists()) {
+                val photoUri = FileProvider.getUriForFile(
+                    this,
+                    "${packageName}.fileprovider",
+                    photoFile
+                )
+
+                if (uploadMessageAboveL != null) {
+                    uploadMessageAboveL?.onReceiveValue(arrayOf(photoUri))
+                    uploadMessageAboveL = null
+                } else if (uploadMessage != null) {
+                    uploadMessage?.onReceiveValue(photoUri)
+                    uploadMessage = null
+                }
+
+                // 通知相册更新
+                sendBroadcast(Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE, photoUri))
+                cameraPhotoPath = null
+                return
+            }
+        }
+
+        // 处理从相册选择的图片
+        if (resultCode == Activity.RESULT_OK && data != null && data.data != null) {
+            val imageUri = data.data!!
+
+            if (uploadMessageAboveL != null) {
+                uploadMessageAboveL?.onReceiveValue(arrayOf(imageUri))
+                uploadMessageAboveL = null
+            } else if (uploadMessage != null) {
+                uploadMessage?.onReceiveValue(imageUri)
+                uploadMessage = null
+            }
+        } else {
+            // 用户取消选择
+            if (uploadMessageAboveL != null) {
+                uploadMessageAboveL?.onReceiveValue(null)
+                uploadMessageAboveL = null
+            } else if (uploadMessage != null) {
+                uploadMessage?.onReceiveValue(null)
+                uploadMessage = null
+            }
+        }
+
+        cameraPhotoPath = null
+    }
+
+    // 权限请求结果
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        when (requestCode) {
+            REQUEST_CAMERA_PERMISSION -> {
+                if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                    showImagePickerDialog()
+                } else {
+                    Toast.makeText(this, "需要相机权限才能拍照", Toast.LENGTH_SHORT).show()
+                    // 降级为仅从相册选择
+                    val intent = Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
+                    intent.type = "image/*"
+                    imagePickerLauncher.launch(intent)
+                }
+            }
+        }
+    }
+
     private fun retryBootFlow() {
         bootResolved = false
         mainFrameFailed = false
@@ -367,6 +566,12 @@ class MainActivity : AppCompatActivity() {
         } ?: super.dispatchTouchEvent(ev)
 
     override fun onDestroy() {
+        // 清理图片上传回调
+        uploadMessage?.onReceiveValue(null)
+        uploadMessageAboveL?.onReceiveValue(null)
+        uploadMessage = null
+        uploadMessageAboveL = null
+
         probeJob?.cancel()
         uiScope.cancel()
         runCatching {
