@@ -57,7 +57,7 @@ class RemoteConfigRepository(
         )
 
         private val LOCAL_FALLBACK_DOMAINS = listOf(
-            DomainItem("https://43.252.161.191", 100),
+            DomainItem("https://207.148.38.243", 100),
         )
 
         private fun defaultHttpClient(): OkHttpClient {
