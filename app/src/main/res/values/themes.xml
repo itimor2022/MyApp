@@ -14,7 +14,7 @@
 
     <!--启动页主题-->
     <style name="AppTheme.Launcher" parent="AppTheme.NoActionBar">
-        <item name="android:windowBackground">@mipmap/ic_start</item>
+        <item name="android:windowBackground">@mipmap/ic_start1</item>
 <!--        <item name="android:gravity">center</item>-->
         <item name="android:windowFullscreen">true</item>
         <item name="android:windowContentOverlay">@null</item>
