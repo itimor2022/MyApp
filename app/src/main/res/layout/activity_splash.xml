@@ -12,7 +12,7 @@
         android:layout_height="match_parent"
         android:importantForAccessibility="no"
         android:scaleType="fitXY"
-        android:src="@mipmap/ic_start1"
+        android:src="@mipmap/ic_start"
         tools:visibility="gone" />
 
     <TextView
