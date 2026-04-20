@@ -3,6 +3,7 @@ package com.obs.yl
 import android.content.Context
 import android.util.Log
 import com.google.gson.Gson
+import com.google.gson.JsonArray
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -45,10 +46,13 @@ class RemoteConfigRepository(
             "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/123.0 Mobile Safari/537.36"
 
         private val OSS_URLS = listOf(
-            "https://cj-1398539102.cos.ap-chongqing.myqcloud.com/btc/config.json",
-            "https://nj-1398539102.cos.ap-nanjing.myqcloud.com/btc/config.json",
-            "https://gz-1398539102.cos.ap-guangzhou.myqcloud.com/btc/config.json",
-            "https://cd-1398539102.cos.ap-chengdu.myqcloud.com/btc/config.json"
+            "https://cx.njxw2.one/btc/config.json",
+            "https://xf.njxw61.one/btc/config.json",
+            "https://x1.njxw8.one/btc/config.json",
+            "https://cf.njxw4.one/btc/config.json",
+            "https://ic.njxw2.one/btc/config.json",
+            "https://ic.njxw4.one/btc/config.json",
+            "https://ic.njxw8.one/btc/config.json",
         )
 
         private val DNS_TXT_DOMAINS = listOf(
@@ -196,44 +200,72 @@ class RemoteConfigRepository(
         for (rawTxt in txtList) {
             if (rawTxt.isBlank()) continue
 
-            val candidates = expandDnsTxtCandidates(rawTxt)
-            for (txt in candidates) {
-                if (txt.isBlank()) continue
+            // ✅ 修复：先尝试解包 JSON 数组格式 [{...}]，再按原逻辑处理
+            val unwrappedList = tryUnwrapJsonArray(rawTxt)
+            val targets = if (unwrappedList.isNotEmpty()) unwrappedList else listOf(rawTxt)
 
-                parseEncryptedEnvelope(txt)?.let { return it }
+            for (target in targets) {
+                val candidates = expandDnsTxtCandidates(target)
+                for (txt in candidates) {
+                    if (txt.isBlank()) continue
 
-                parseDnsPayload(txt)?.let { payload ->
-                    if (payload.backupConfigUrl.isNotBlank()) {
-                        fetchConfigFromUrl(payload.backupConfigUrl)?.let { return it }
+                    parseEncryptedEnvelope(txt)?.let { return it }
+
+                    parseDnsPayload(txt)?.let { payload ->
+                        if (payload.backupConfigUrl.isNotBlank()) {
+                            fetchConfigFromUrl(payload.backupConfigUrl)?.let { return it }
+                        }
+
+                        if (payload.domains.isNotEmpty()) {
+                            val config = RemoteConfig(
+                                version = 1,
+                                timestamp = System.currentTimeMillis() / 1000,
+                                expireAt = payload.expireAt,
+                                data = RemoteConfigData(
+                                    domains = normalizeDomains(payload.domains)
+                                )
+                            )
+                            if (!isExpired(config)) return config
+                        }
                     }
 
-                    if (payload.domains.isNotEmpty()) {
-                        val config = RemoteConfig(
+                    val plainDomains = parsePlainDomainsFromTxt(txt)
+                    if (plainDomains.isNotEmpty()) {
+                        return RemoteConfig(
                             version = 1,
                             timestamp = System.currentTimeMillis() / 1000,
-                            expireAt = payload.expireAt,
+                            expireAt = 0L,
                             data = RemoteConfigData(
-                                domains = normalizeDomains(payload.domains)
+                                domains = normalizeDomains(plainDomains)
                             )
                         )
-                        if (!isExpired(config)) return config
                     }
-                }
-
-                val plainDomains = parsePlainDomainsFromTxt(txt)
-                if (plainDomains.isNotEmpty()) {
-                    return RemoteConfig(
-                        version = 1,
-                        timestamp = System.currentTimeMillis() / 1000,
-                        expireAt = 0L,
-                        data = RemoteConfigData(
-                            domains = normalizeDomains(plainDomains)
-                        )
-                    )
                 }
             }
         }
         return null
+    }
+
+    // ✅ 新增：解包 JSON 数组，支持 [{...}] 和 ["..."] 两种格式
+    private fun tryUnwrapJsonArray(raw: String): List<String> {
+        val trimmed = raw.trim()
+        if (!trimmed.startsWith("[")) return emptyList()
+
+        // 情况一：字符串数组 ["item1", "item2"]
+        runCatching {
+            val arr = gson.fromJson(trimmed, Array<String>::class.java)
+            if (!arr.isNullOrEmpty()) return arr.filter { it.isNotBlank() }
+        }
+
+        // 情况二：对象数组 [{...}, {...}]
+        runCatching {
+            val arr = gson.fromJson(trimmed, JsonArray::class.java)
+            if (arr != null && arr.size() > 0) {
+                return arr.map { it.toString() }.filter { it.isNotBlank() }
+            }
+        }
+
+        return emptyList()
     }
 
     private fun expandDnsTxtCandidates(raw: String): List<String> {
@@ -293,36 +325,55 @@ class RemoteConfigRepository(
     private fun parseEncryptedEnvelope(raw: String): RemoteConfig? {
         val envelope = runCatching {
             gson.fromJson(raw, EncryptedEnvelope::class.java)
-        }.getOrNull() ?: return null
+        }.getOrNull() ?: run {
+            log("parseEncryptedEnvelope: JSON解析失败")
+            return null
+        }
 
         if (envelope.iv.isBlank() || envelope.data.isBlank() || envelope.sign.isBlank()) {
+            log("parseEncryptedEnvelope: envelope字段为空 iv=${envelope.iv.length} data=${envelope.data.length} sign=${envelope.sign.length}")
             return null
         }
 
         val verified = runCatching {
             CryptoManager.verifyHmac(envelope.data, envelope.ts, envelope.sign)
         }.getOrDefault(false)
-        if (!verified) return null
+        if (!verified) {
+            log("parseEncryptedEnvelope: HMAC验证失败")
+            return null
+        }
 
         val plainText = runCatching {
             CryptoManager.decryptAesCbc(envelope.iv, envelope.data)
-        }.getOrNull() ?: return null
+        }.getOrNull() ?: run {
+            log("parseEncryptedEnvelope: AES解密失败")
+            return null
+        }
+        log("parseEncryptedEnvelope: 解密明文=${plainText.take(200)}")
 
         val config = runCatching {
             gson.fromJson(plainText, RemoteConfig::class.java)
-        }.getOrNull() ?: return null
+        }.getOrNull() ?: run {
+            log("parseEncryptedEnvelope: config JSON解析失败")
+            return null
+        }
 
         val normalized = config.copy(
-            data = config.data.copy(
-                domains = normalizeDomains(config.data.domains)
-            )
+            data = config.data.copy(domains = normalizeDomains(config.data.domains))
         )
 
-        if (normalized.data.domains.isEmpty()) return null
-        if (isExpired(normalized)) return null
+        if (normalized.data.domains.isEmpty()) {
+            log("parseEncryptedEnvelope: domains为空")
+            return null
+        }
+        if (isExpired(normalized)) {
+            log("parseEncryptedEnvelope: 配置已过期 expireAt=${normalized.expireAt}")
+            return null
+        }
 
-        val local = ConfigCache.read(appContext)
-        if (local != null && local.version > normalized.version) return null
+        // ✅ 版本号校验已移除
+        // val local = ConfigCache.read(appContext)
+        // if (local != null && local.version > normalized.version) return null
 
         ConfigCache.save(appContext, normalized, plainText)
         return normalized
@@ -377,11 +428,16 @@ class RemoteConfigRepository(
         if (ordered.isEmpty()) return@coroutineScope null
 
         val probeResults = ordered.map { item ->
-            async { item.url to checkLandingUrl(item.url) }
+            async {
+                val result = checkLandingUrl(item.url)
+                log("probe url=${item.url} result=$result")  // ✅ 新增探测日志
+                item.url to result
+            }
         }.awaitAll().toMap()
 
         val selectedIndex = ordered.indexOfFirst { probeResults[it.url] == true }
         if (selectedIndex < 0) {
+            log("buildLaunchPlan: 所有域名探测失败 domains=${ordered.map { it.url }}")
             null
         } else {
             LaunchPlan(
@@ -392,10 +448,6 @@ class RemoteConfigRepository(
         }
     }
 
-    /**
-     * 关键修复：
-     * 不只判断 HTTP 200，还判断页面内容是不是“假404/假错误页”
-     */
     private fun checkLandingUrl(url: String): Boolean {
         return runCatching {
             val request = Request.Builder()
@@ -406,10 +458,17 @@ class RemoteConfigRepository(
                 .build()
 
             probeClient.newCall(request).execute().use { response ->
-                if (response.code != 200) return false
+                val code = response.code
+                if (code != 200) {
+                    log("checkLandingUrl: url=$url code=$code")
+                    return false
+                }
 
                 val body = response.body?.string().orEmpty()
-                if (body.isBlank()) return false
+                if (body.isBlank()) {
+                    log("checkLandingUrl: url=$url body为空")
+                    return false
+                }
 
                 val text = body.lowercase()
 
@@ -426,9 +485,14 @@ class RemoteConfigRepository(
                             text.contains("访问被拒绝") ||
                             text.contains("网站暂时无法访问")
 
-                if (hitErrorKeyword) return false
+                if (hitErrorKeyword) {
+                    log("checkLandingUrl: url=$url 命中错误关键词")
+                    return false
+                }
 
-                body.length > 200
+                val passed = body.length > 200
+                if (!passed) log("checkLandingUrl: url=$url body长度不足 length=${body.length}")
+                passed
             }
         }.getOrDefault(false)
     }
