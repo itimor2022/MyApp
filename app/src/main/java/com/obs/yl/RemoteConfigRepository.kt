@@ -76,6 +76,40 @@ class RemoteConfigRepository(
     }
 
     suspend fun fetchAvailableConfig(): RemoteConfigResult = withContext(Dispatchers.IO) {
+
+        // ══════════════════════════════════════════════════════
+        // 阶段1：优先读 last.txt，直接 probe，通了就返回，极速启动
+        // ══════════════════════════════════════════════════════
+        val lastUrl = LastUrlCache.read(appContext)
+        if (!lastUrl.isNullOrBlank()) {
+            log("last.txt 命中，探测 lastUrl=$lastUrl")
+            val alive = runCatching { checkLandingUrl(lastUrl) }.getOrDefault(false)
+            if (alive) {
+                log("last.txt 域名存活，直接返回 lastUrl=$lastUrl")
+                val cachedConfig = ConfigCache.read(appContext) ?: localFallbackConfig()
+                val mergedDomains = mergeDomains(
+                    primary = listOf(DomainItem(lastUrl, weight = 999)),
+                    backup = cachedConfig.data.domains,
+                    preferredUrl = lastUrl
+                )
+                return@withContext RemoteConfigResult.Success(
+                    config = cachedConfig,
+                    source = "LAST_URL_CACHE",
+                    launchPlan = LaunchPlan(
+                        domains = mergedDomains,
+                        selectedIndex = 0,
+                        selectedUrl = lastUrl
+                    )
+                )
+            } else {
+                log("last.txt 域名失效，清除并走全链路 lastUrl=$lastUrl")
+                LastUrlCache.clear(appContext)
+            }
+        }
+
+        // ══════════════════════════════════════════════════════
+        // 阶段2：全链路拉取 — 逻辑与原来完全一致，成功后写 last.txt
+        // ══════════════════════════════════════════════════════
         val lastGoodUrl = ConfigCache.readLastGoodUrl(appContext)
         val sources = mutableListOf<SourceConfig>()
 
@@ -115,6 +149,10 @@ class RemoteConfigRepository(
             )
 
             if (primaryPlan != null) {
+                // ✅ 找到可用域名，写入 last.txt
+                LastUrlCache.save(appContext, primaryPlan.selectedUrl)
+                log("写入 last.txt url=${primaryPlan.selectedUrl}")
+
                 val remainingBackupDomains = sources
                     .drop(index + 1)
                     .flatMap { it.config.data.domains }
@@ -142,8 +180,12 @@ class RemoteConfigRepository(
             triedDomainUrls += normalizeDomains(source.config.data.domains).map { it.url }
         }
 
+        // ══════════════════════════════════════════════════════
+        // 阶段3：全部失败
+        // ══════════════════════════════════════════════════════
         RemoteConfigResult.Error("当前线路不可用，请稍后重试")
     }
+
 
     suspend fun fetchRuntimeFallbackPlan(excludedUrls: Set<String>): LaunchPlan? =
         withContext(Dispatchers.IO) {
