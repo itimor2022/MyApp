@@ -362,6 +362,8 @@ class MainActivity : AppCompatActivity() {
                     photoFile
                 )
                 takePhotoIntent.putExtra(MediaStore.EXTRA_OUTPUT, photoUri)
+                // 关键：授予相机应用写入 URI 的权限
+                takePhotoIntent.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
                 intentList.add(takePhotoIntent)
             }
         }
