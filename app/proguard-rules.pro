@@ -28,12 +28,12 @@
     @com.google.gson.annotations.SerializedName <fields>;
 }
 
--keep class com.bilibili.btc101.EncryptedEnvelope { *; }
--keep class com.bilibili.btc101.DomainItem { *; }
--keep class com.bilibili.btc101.RemoteConfig { *; }
--keep class com.bilibili.btc101.RemoteConfigData { *; }
--keep class com.bilibili.btc101.DnsTxtPayload { *; }
--keep class com.bilibili.btc101.LaunchPlan { *; }
+-keep class com.obs.yl.EncryptedEnvelope { *; }
+-keep class com.obs.yl.DomainItem { *; }
+-keep class com.obs.yl.RemoteConfig { *; }
+-keep class com.obs.yl.RemoteConfigData { *; }
+-keep class com.obs.yl.DnsTxtPayload { *; }
+-keep class com.obs.yl.LaunchPlan { *; }
 
 # Keep Gson TypeToken metadata for release builds
 -keep class com.google.gson.reflect.TypeToken { *; }
