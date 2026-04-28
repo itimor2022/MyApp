@@ -19,13 +19,13 @@ object CryptoManager {
      * Base64 解码后必须是 16 / 24 / 32 字节
      */
     private const val AES_KEY_BASE64 =
-        "q/bbdN1LmJLD2RFJrxeqwoy1hsnwGO3qx6bLFHzZb3o="
+        "vf35Cf34Va1MaAPHK6nRtdimbHMmITKkaxygrprAubk="
 
     /**
      * 必须替换成你自己的 HMAC 密钥
      */
     private const val HMAC_KEY =
-        "316b71fcd718535435d0b968b9bcef1541102df0cccf1644e33dbb06df9f5755"
+        "ab52f8654cda21423e610e29543f9b654daa6f09b7ff9e5bab7ff14a79198f0e"
 
     fun decryptAesCbc(base64Iv: String, base64CipherText: String): String {
         val keyBytes = Base64.decode(AES_KEY_BASE64, Base64.NO_WRAP)

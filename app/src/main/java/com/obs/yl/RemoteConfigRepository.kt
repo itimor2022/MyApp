@@ -46,21 +46,29 @@ class RemoteConfigRepository(
             "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/123.0 Mobile Safari/537.36"
 
         private val OSS_URLS = listOf(
-            "https://cx.njxw2.one/bld/config.json",
-            "https://xf.njxw61.one/bld/config.json",
-            "https://x1.njxw8.one/bld/config.json",
-            "https://cf.njxw4.one/bld/config.json",
-            "https://ic.njxw2.one/bld/config.json",
-            "https://ic.njxw4.one/bld/config.json",
-            "https://ic.njxw8.one/bld/config.json",
+            "https://cx.njxw2.one/aoa/config.json",
+            "https://xf.njxw61.one/aoa/config.json",
+            "https://x1.njxw8.one/aoa/config.json",
+            "https://cf.njxw4.one/aoa/config.json",
+            "https://ic.njxw2.one/aoa/config.json",
+            "https://ic.njxw4.one/aoa/config.json",
+            "https://ic.njxw8.one/aoa/config.json",
+            "https://js.kixkb.icu/aoa/config.json",
+            "https://xk.kixkb.icu/aoa/config.json",
+            "https://ic.kixkb.icu/aoa/config.json",
+            "https://ic.t39m0.icu/aoa/config.json",
+            "https://mk.t39m0.icu/aoa/config.json",
         )
 
         private val DNS_TXT_DOMAINS = listOf(
-            "ct.vt6q.icu",
+            "cfg.66362.xyz",
+            "cfg.66325.xyz",
+            "cfg.66215.xyz"
         )
 
         private val LOCAL_FALLBACK_DOMAINS = listOf(
-            DomainItem("https://43.252.163.167", 100),
+            DomainItem("https://66.212.58.222", 100),
+            DomainItem("https://147.92.38.233", 95),
         )
 
         private fun defaultHttpClient(): OkHttpClient {
