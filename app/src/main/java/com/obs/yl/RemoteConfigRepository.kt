@@ -71,7 +71,12 @@ class RemoteConfigRepository(
 
         private val DNS_TXT_DOMAINS = listOf(
             "cx.xy422.cc",
-            "ct.xy410.cc"
+            "ct.xy410.cc",
+            "cfg.shbc5.top",
+            "cfg.669811.top",
+            "cfg.669812.top",
+            "cfg.tyn3.shop",
+            "cfg.xh1t.top",
         )
 
         private val LOCAL_FALLBACK_DOMAINS = listOf(
