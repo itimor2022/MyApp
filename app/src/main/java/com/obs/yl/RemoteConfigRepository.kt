@@ -46,17 +46,36 @@ class RemoteConfigRepository(
             "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/123.0 Mobile Safari/537.36"
 
         private val OSS_URLS = listOf(
-            "https://cx.njxw2.one/bld/config.json",
-            "https://xf.njxw61.one/bld/config.json",
-            "https://x1.njxw8.one/bld/config.json",
-            "https://cf.njxw4.one/bld/config.json",
-            "https://ic.njxw2.one/bld/config.json",
-            "https://ic.njxw4.one/bld/config.json",
-            "https://ic.njxw8.one/bld/config.json",
+            "https://xv.t39m0.icu/bld/config.json",
+            "https://uk.t39m0.icu/bld/config.json",
+            "https://xk.t39m0.icu/bld/config.json",
+            "https://en.t39m0.icu/bld/config.json",
+            "https://vp.kixkb.icu/bld/config.json",
+            "https://ew.kixkb.icu/bld/config.json",
+            "https://as.kixkb.icu/bld/config.json",
+            "https://xs.kixkb.icu/bld/config.json",
+            "https://in.njxw4.one/bld/config.json",
+            "https://en.njxw4.one/bld/config.json",
+            "https://vu.njxw4.one/bld/config.json",
+            "https://vk.njxw4.one/bld/config.json",
+            "https://xq.ntxi2.shop/bld/config.json",
+            "https://bx.ntxi2.shop/bld/config.json",
+            "https://xz.ntxi2.shop/bld/config.json",
+            "https://sx.ntxi2.shop/bld/config.json",
+            "https://bx.xmnv.shop/bld/config.json",
+            "https://eq.xmnv.shop/bld/config.json",
+            "https://vs.xmnv.shop/bld/config.json",
+            "https://wa.xmnv.shop/bld/config.json",
+            "https://xq.xmnv.shop/bld/config.json",
         )
 
         private val DNS_TXT_DOMAINS = listOf(
             "ct.vt6q.icu",
+            "cfg.osj1.shop",
+            "cfg.osnw.top",
+            "cfg.pj6.icu",
+            "cfg.tyn2.shop",
+            "cfg.tyn1.shop",
         )
 
         private val LOCAL_FALLBACK_DOMAINS = listOf(

@@ -152,12 +152,14 @@ class MainActivity : AppCompatActivity() {
         setting.loadWithOverviewMode = true
         setting.allowFileAccess = true  // 允许文件访问
         setting.allowContentAccess = true  // 允许内容访问
-
         // 设置文件上传相关
         setting.setSupportZoom(false)
         setting.builtInZoomControls = false
         setting.displayZoomControls = false
-
+        // ========== 添加以下代码启用文本选择/复制 ==========
+        setting.javaScriptCanOpenWindowsAutomatically = true
+        // 启用文本选择能力
+        wb.isLongClickable = true
         wb.isHorizontalScrollBarEnabled = false
         wb.isVerticalScrollBarEnabled = false
         wb.webChromeClient = object : WebChromeClient() {
