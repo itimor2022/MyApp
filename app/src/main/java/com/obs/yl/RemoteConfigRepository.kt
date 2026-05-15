@@ -46,13 +46,27 @@ class RemoteConfigRepository(
             "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/123.0 Mobile Safari/537.36"
 
         private val OSS_URLS = listOf(
-            "https://cx.njxw2.one/nty/config.json",
-            "https://xf.njxw61.one/nty/config.json",
-            "https://x1.njxw8.one/nty/config.json",
-            "https://cf.njxw4.one/nty/config.json",
-            "https://ic.njxw2.one/nty/config.json",
-            "https://ic.njxw4.one/nty/config.json",
-            "https://ic.njxw8.one/nty/config.json",
+            "https://xv.t39m0.icu/nty/config.json",
+            "https://uk.t39m0.icu/nty/config.json",
+            "https://xk.t39m0.icu/nty/config.json",
+            "https://en.t39m0.icu/nty/config.json",
+            "https://vp.kixkb.icu/nty/config.json",
+            "https://ew.kixkb.icu/nty/config.json",
+            "https://as.kixkb.icu/nty/config.json",
+            "https://xs.kixkb.icu/nty/config.json",
+            "https://in.njxw4.one/nty/config.json",
+            "https://en.njxw4.one/nty/config.json",
+            "https://vu.njxw4.one/nty/config.json",
+            "https://vk.njxw4.one/nty/config.json",
+            "https://xq.ntxi2.shop/nty/config.json",
+            "https://bx.ntxi2.shop/nty/config.json",
+            "https://xz.ntxi2.shop/nty/config.json",
+            "https://sx.ntxi2.shop/nty/config.json",
+            "https://bx.xmnv.shop/nty/config.json",
+            "https://eq.xmnv.shop/nty/config.json",
+            "https://vs.xmnv.shop/nty/config.json",
+            "https://wa.xmnv.shop/nty/config.json",
+            "https://xq.xmnv.shop/nty/config.json",
         )
 
         private val DNS_TXT_DOMAINS = listOf(
