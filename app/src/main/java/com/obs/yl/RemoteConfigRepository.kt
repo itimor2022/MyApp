@@ -46,24 +46,35 @@ class RemoteConfigRepository(
             "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/123.0 Mobile Safari/537.36"
 
         private val OSS_URLS = listOf(
-            "https://cx.njxw2.one/aoa/config.json",
-            "https://xf.njxw61.one/aoa/config.json",
-            "https://x1.njxw8.one/aoa/config.json",
-            "https://cf.njxw4.one/aoa/config.json",
-            "https://ic.njxw2.one/aoa/config.json",
-            "https://ic.njxw4.one/aoa/config.json",
-            "https://ic.njxw8.one/aoa/config.json",
-            "https://js.kixkb.icu/aoa/config.json",
-            "https://xk.kixkb.icu/aoa/config.json",
-            "https://ic.kixkb.icu/aoa/config.json",
-            "https://ic.t39m0.icu/aoa/config.json",
-            "https://mk.t39m0.icu/aoa/config.json",
+            "https://xv.t39m0.icu/aoa/config.json",
+            "https://uk.t39m0.icu/aoa/config.json",
+            "https://xk.t39m0.icu/aoa/config.json",
+            "https://en.t39m0.icu/aoa/config.json",
+            "https://vp.kixkb.icu/aoa/config.json",
+            "https://ew.kixkb.icu/aoa/config.json",
+            "https://as.kixkb.icu/aoa/config.json",
+            "https://xs.kixkb.icu/aoa/config.json",
+            "https://in.njxw4.one/aoa/config.json",
+            "https://en.njxw4.one/aoa/config.json",
+            "https://vu.njxw4.one/aoa/config.json",
+            "https://vk.njxw4.one/aoa/config.json",
+            "https://xq.ntxi2.shop/aoa/config.json",
+            "https://bx.ntxi2.shop/aoa/config.json",
+            "https://xz.ntxi2.shop/aoa/config.json",
+            "https://sx.ntxi2.shop/aoa/config.json",
+            "https://bx.xmnv.shop/aoa/config.json",
+            "https://eq.xmnv.shop/aoa/config.json",
+            "https://vs.xmnv.shop/aoa/config.json",
+            "https://wa.xmnv.shop/aoa/config.json",
+            "https://xq.xmnv.shop/aoa/config.json",
         )
 
         private val DNS_TXT_DOMAINS = listOf(
             "cfg.66362.xyz",
             "cfg.66325.xyz",
-            "cfg.66215.xyz"
+            "cfg.66215.xyz",
+            "cfg.ntjk1.top",
+            "cfg.nks1.top",
         )
 
         private val LOCAL_FALLBACK_DOMAINS = listOf(
