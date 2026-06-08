@@ -45,30 +45,6 @@ class RemoteConfigRepository(
         private const val USER_AGENT =
             "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/123.0 Mobile Safari/537.36"
 
-        private val OSS_URLS = listOf(
-            "https://xv.t39m0.icu/btc/config.json",
-            "https://uk.t39m0.icu/btc/config.json",
-            "https://xk.t39m0.icu/btc/config.json",
-            "https://en.t39m0.icu/btc/config.json",
-            "https://vp.kixkb.icu/btc/config.json",
-            "https://ew.kixkb.icu/btc/config.json",
-            "https://as.kixkb.icu/btc/config.json",
-            "https://xs.kixkb.icu/btc/config.json",
-            "https://in.njxw4.one/btc/config.json",
-            "https://en.njxw4.one/btc/config.json",
-            "https://vu.njxw4.one/btc/config.json",
-            "https://vk.njxw4.one/btc/config.json",
-            "https://xq.ntxi2.shop/btc/config.json",
-            "https://bx.ntxi2.shop/btc/config.json",
-            "https://xz.ntxi2.shop/btc/config.json",
-            "https://sx.ntxi2.shop/btc/config.json",
-            "https://bx.xmnv.shop/btc/config.json",
-            "https://eq.xmnv.shop/btc/config.json",
-            "https://vs.xmnv.shop/btc/config.json",
-            "https://wa.xmnv.shop/btc/config.json",
-            "https://xq.xmnv.shop/btc/config.json",
-        )
-
         private val DNS_TXT_DOMAINS = listOf(
             "cx.xy422.cc",
             "ct.xy410.cc",
@@ -137,14 +113,6 @@ class RemoteConfigRepository(
         if (cached != null && !isExpired(cached)) {
             log("add source CACHE")
             sources += SourceConfig("CACHE", cached)
-        }
-
-        for (url in OSS_URLS) {
-            val config = runCatching { fetchConfigFromUrl(url) }.getOrNull()
-            if (config != null) {
-                log("add source OSS url=$url")
-                sources += SourceConfig("OSS", config)
-            }
         }
 
         for (domain in DNS_TXT_DOMAINS) {
