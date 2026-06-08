@@ -45,30 +45,6 @@ class RemoteConfigRepository(
         private const val USER_AGENT =
             "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/123.0 Mobile Safari/537.36"
 
-        private val OSS_URLS = listOf(
-            "https://xv.t39m0.icu/aoa/config.json",
-            "https://uk.t39m0.icu/aoa/config.json",
-            "https://xk.t39m0.icu/aoa/config.json",
-            "https://en.t39m0.icu/aoa/config.json",
-            "https://vp.kixkb.icu/aoa/config.json",
-            "https://ew.kixkb.icu/aoa/config.json",
-            "https://as.kixkb.icu/aoa/config.json",
-            "https://xs.kixkb.icu/aoa/config.json",
-            "https://in.njxw4.one/aoa/config.json",
-            "https://en.njxw4.one/aoa/config.json",
-            "https://vu.njxw4.one/aoa/config.json",
-            "https://vk.njxw4.one/aoa/config.json",
-            "https://xq.ntxi2.shop/aoa/config.json",
-            "https://bx.ntxi2.shop/aoa/config.json",
-            "https://xz.ntxi2.shop/aoa/config.json",
-            "https://sx.ntxi2.shop/aoa/config.json",
-            "https://bx.xmnv.shop/aoa/config.json",
-            "https://eq.xmnv.shop/aoa/config.json",
-            "https://vs.xmnv.shop/aoa/config.json",
-            "https://wa.xmnv.shop/aoa/config.json",
-            "https://xq.xmnv.shop/aoa/config.json",
-        )
-
         private val DNS_TXT_DOMAINS = listOf(
             "cfg.66362.xyz",
             "cfg.66325.xyz",
@@ -136,14 +112,6 @@ class RemoteConfigRepository(
         if (cached != null && !isExpired(cached)) {
             log("add source CACHE")
             sources += SourceConfig("CACHE", cached)
-        }
-
-        for (url in OSS_URLS) {
-            val config = runCatching { fetchConfigFromUrl(url) }.getOrNull()
-            if (config != null) {
-                log("add source OSS url=$url")
-                sources += SourceConfig("OSS", config)
-            }
         }
 
         for (domain in DNS_TXT_DOMAINS) {
