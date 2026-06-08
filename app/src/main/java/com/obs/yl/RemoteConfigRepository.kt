@@ -45,30 +45,6 @@ class RemoteConfigRepository(
         private const val USER_AGENT =
             "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/123.0 Mobile Safari/537.36"
 
-        private val OSS_URLS = listOf(
-            "https://xv.t39m0.icu/nty/config.json",
-            "https://uk.t39m0.icu/nty/config.json",
-            "https://xk.t39m0.icu/nty/config.json",
-            "https://en.t39m0.icu/nty/config.json",
-            "https://vp.kixkb.icu/nty/config.json",
-            "https://ew.kixkb.icu/nty/config.json",
-            "https://as.kixkb.icu/nty/config.json",
-            "https://xs.kixkb.icu/nty/config.json",
-            "https://in.njxw4.one/nty/config.json",
-            "https://en.njxw4.one/nty/config.json",
-            "https://vu.njxw4.one/nty/config.json",
-            "https://vk.njxw4.one/nty/config.json",
-            "https://xq.ntxi2.shop/nty/config.json",
-            "https://bx.ntxi2.shop/nty/config.json",
-            "https://xz.ntxi2.shop/nty/config.json",
-            "https://sx.ntxi2.shop/nty/config.json",
-            "https://bx.xmnv.shop/nty/config.json",
-            "https://eq.xmnv.shop/nty/config.json",
-            "https://vs.xmnv.shop/nty/config.json",
-            "https://wa.xmnv.shop/nty/config.json",
-            "https://xq.xmnv.shop/nty/config.json",
-        )
-
         private val DNS_TXT_DOMAINS = listOf(
             "cfg.xy230.cc",
             "cfg.xy109.cc"
@@ -132,14 +108,6 @@ class RemoteConfigRepository(
         if (cached != null && !isExpired(cached)) {
             log("add source CACHE")
             sources += SourceConfig("CACHE", cached)
-        }
-
-        for (url in OSS_URLS) {
-            val config = runCatching { fetchConfigFromUrl(url) }.getOrNull()
-            if (config != null) {
-                log("add source OSS url=$url")
-                sources += SourceConfig("OSS", config)
-            }
         }
 
         for (domain in DNS_TXT_DOMAINS) {
