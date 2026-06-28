@@ -53,10 +53,6 @@ class RemoteConfigRepository(
             "cfg.nks1.top",
         )
 
-        private val LOCAL_FALLBACK_DOMAINS = listOf(
-            DomainItem("https://147.92.47.177", 100),
-        )
-
         private fun defaultHttpClient(): OkHttpClient {
             return OkHttpClient.Builder()
                 .connectTimeout(4, TimeUnit.SECONDS)
@@ -70,48 +66,10 @@ class RemoteConfigRepository(
     }
 
     suspend fun fetchAvailableConfig(): RemoteConfigResult = withContext(Dispatchers.IO) {
-
         // ══════════════════════════════════════════════════════
-        // 阶段1：优先读 last.txt，直接 probe，通了就返回，极速启动
+        // 全链路拉取：线路仅来自 DNS TXT
         // ══════════════════════════════════════════════════════
-        val lastUrl = LastUrlCache.read(appContext)
-        if (!lastUrl.isNullOrBlank()) {
-            log("last.txt 命中，探测 lastUrl=$lastUrl")
-            val alive = runCatching { checkLandingUrl(lastUrl) }.getOrDefault(false)
-            if (alive) {
-                log("last.txt 域名存活，直接返回 lastUrl=$lastUrl")
-                val cachedConfig = ConfigCache.read(appContext) ?: localFallbackConfig()
-                val mergedDomains = mergeDomains(
-                    primary = listOf(DomainItem(lastUrl, weight = 999)),
-                    backup = cachedConfig.data.domains,
-                    preferredUrl = lastUrl
-                )
-                return@withContext RemoteConfigResult.Success(
-                    config = cachedConfig,
-                    source = "LAST_URL_CACHE",
-                    launchPlan = LaunchPlan(
-                        domains = mergedDomains,
-                        selectedIndex = 0,
-                        selectedUrl = lastUrl
-                    )
-                )
-            } else {
-                log("last.txt 域名失效，清除并走全链路 lastUrl=$lastUrl")
-                LastUrlCache.clear(appContext)
-            }
-        }
-
-        // ══════════════════════════════════════════════════════
-        // 阶段2：全链路拉取 — 逻辑与原来完全一致，成功后写 last.txt
-        // ══════════════════════════════════════════════════════
-        val lastGoodUrl = ConfigCache.readLastGoodUrl(appContext)
         val sources = mutableListOf<SourceConfig>()
-
-        val cached = ConfigCache.read(appContext)
-        if (cached != null && !isExpired(cached)) {
-            log("add source CACHE")
-            sources += SourceConfig("CACHE", cached)
-        }
 
         for (domain in DNS_TXT_DOMAINS) {
             val config = runCatching { fetchConfigFromDns(domain) }.getOrNull()
@@ -121,7 +79,9 @@ class RemoteConfigRepository(
             }
         }
 
-        sources += SourceConfig("LOCAL", localFallbackConfig())
+        if (sources.isEmpty()) {
+            return@withContext RemoteConfigResult.Error("当前线路不可用，请稍后重试")
+        }
 
         val triedDomainUrls = linkedSetOf<String>()
 
@@ -130,15 +90,11 @@ class RemoteConfigRepository(
 
             val primaryPlan = buildLaunchPlan(
                 domains = source.config.data.domains,
-                preferredUrl = lastGoodUrl,
+                preferredUrl = "",
                 excludedUrls = triedDomainUrls
             )
 
             if (primaryPlan != null) {
-                // ✅ 找到可用域名，写入 last.txt
-                LastUrlCache.save(appContext, primaryPlan.selectedUrl)
-                log("写入 last.txt url=${primaryPlan.selectedUrl}")
-
                 val remainingBackupDomains = sources
                     .drop(index + 1)
                     .flatMap { it.config.data.domains }
@@ -146,7 +102,7 @@ class RemoteConfigRepository(
                 val mergedDomains = mergeDomains(
                     primary = primaryPlan.domains,
                     backup = remainingBackupDomains,
-                    preferredUrl = lastGoodUrl
+                    preferredUrl = ""
                 )
 
                 val finalSelectedIndex =
@@ -166,16 +122,12 @@ class RemoteConfigRepository(
             triedDomainUrls += normalizeDomains(source.config.data.domains).map { it.url }
         }
 
-        // ══════════════════════════════════════════════════════
-        // 阶段3：全部失败
-        // ══════════════════════════════════════════════════════
         RemoteConfigResult.Error("当前线路不可用，请稍后重试")
     }
 
 
     suspend fun fetchRuntimeFallbackPlan(excludedUrls: Set<String>): LaunchPlan? =
         withContext(Dispatchers.IO) {
-            val lastGoodUrl = ConfigCache.readLastGoodUrl(appContext)
             val fallbackSources = mutableListOf<SourceConfig>()
 
             for (domain in DNS_TXT_DOMAINS) {
@@ -183,18 +135,11 @@ class RemoteConfigRepository(
                 if (config != null) fallbackSources += SourceConfig("DNS_TXT", config)
             }
 
-            val cached = ConfigCache.read(appContext)
-            if (cached != null && !isExpired(cached)) {
-                fallbackSources += SourceConfig("CACHE", cached)
-            }
-
-            fallbackSources += SourceConfig("LOCAL", localFallbackConfig())
-
             val allDomains = fallbackSources.flatMap { it.config.data.domains }
 
             buildLaunchPlan(
                 domains = allDomains,
-                preferredUrl = lastGoodUrl,
+                preferredUrl = "",
                 excludedUrls = excludedUrls
             )
         }
@@ -522,17 +467,6 @@ class RemoteConfigRepository(
                 passed
             }
         }.getOrDefault(false)
-    }
-
-    private fun localFallbackConfig(): RemoteConfig {
-        return RemoteConfig(
-            version = 1,
-            timestamp = System.currentTimeMillis() / 1000,
-            expireAt = 0L,
-            data = RemoteConfigData(
-                domains = normalizeDomains(LOCAL_FALLBACK_DOMAINS)
-            )
-        )
     }
 
     private fun normalizeDomains(domains: List<DomainItem>): List<DomainItem> {
