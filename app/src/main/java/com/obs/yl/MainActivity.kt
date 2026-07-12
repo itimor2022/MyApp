@@ -325,12 +325,52 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // 打开文件选择器
+    /**
+     * 打开文件选择器 - 方案一：支持所有文件类型（包括视频）
+     */
     private fun openFileChooser() {
-        val i = Intent(Intent.ACTION_GET_CONTENT)
-        i.addCategory(Intent.CATEGORY_OPENABLE)
-        i.type = "image/*"  // 可以修改为 "*/*" 允许所有类型，或 "image/*,video/*" 等
-        filePickerLauncher.launch(i)
+        try {
+            val i = Intent(Intent.ACTION_GET_CONTENT)
+            i.addCategory(Intent.CATEGORY_OPENABLE)
+            // 修改为 */* 支持所有文件类型，包括视频、图片、文档等
+            i.type = "*/*"
+            
+            // 可选：增加提示说明（部分机型会显示）
+            // i.putExtra(Intent.EXTRA_TITLE, "选择文件")
+            
+            filePickerLauncher.launch(i)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            Toast.makeText(this, "无法打开文件选择器", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /**
+     * 打开文件选择器（支持指定多个MIME类型）- 备用方案
+     */
+    private fun openFileChooserWithMimeTypes() {
+        try {
+            val i = Intent(Intent.ACTION_GET_CONTENT)
+            i.addCategory(Intent.CATEGORY_OPENABLE)
+            i.type = "*/*"
+            // 如果想限制具体类型，取消注释下面的代码
+            // i.putExtra(Intent.EXTRA_MIME_TYPES, arrayOf(
+            //     "image/*",
+            //     "video/*",
+            //     "audio/*",
+            //     "application/pdf",
+            //     "application/msword",
+            //     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            //     "application/vnd.ms-excel",
+            //     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            //     "application/vnd.ms-powerpoint",
+            //     "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+            // ))
+            filePickerLauncher.launch(i)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            Toast.makeText(this, "无法打开文件选择器", Toast.LENGTH_SHORT).show()
+        }
     }
 
     // Android 5.0+ 处理文件上传结果
@@ -340,15 +380,20 @@ class MainActivity : AppCompatActivity() {
         var results: Array<Uri>? = null
 
         if (resultCode == Activity.RESULT_OK && data != null) {
-            val dataString = data.dataString
-            val clipData = data.clipData
+            try {
+                val dataString = data.dataString
+                val clipData = data.clipData
 
-            if (clipData != null) {
-                results = Array(clipData.itemCount) { i ->
-                    clipData.getItemAt(i).uri
+                if (clipData != null) {
+                    results = Array(clipData.itemCount) { i ->
+                        clipData.getItemAt(i).uri
+                    }
+                } else if (dataString != null) {
+                    results = arrayOf(Uri.parse(dataString))
                 }
-            } else if (dataString != null) {
-                results = arrayOf(Uri.parse(dataString))
+            } catch (e: Exception) {
+                e.printStackTrace()
+                results = null
             }
         }
 
@@ -362,9 +407,14 @@ class MainActivity : AppCompatActivity() {
         var result: Uri? = null
 
         if (resultCode == Activity.RESULT_OK && data != null) {
-            val dataString = data.dataString
-            if (dataString != null) {
-                result = Uri.parse(dataString)
+            try {
+                val dataString = data.dataString
+                if (dataString != null) {
+                    result = Uri.parse(dataString)
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                result = null
             }
         }
 
