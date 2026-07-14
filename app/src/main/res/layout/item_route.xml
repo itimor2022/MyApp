@@ -15,7 +15,7 @@
         android:id="@+id/rb"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:buttonTint="#79B3FF"
+        android:buttonTint="#5ED58F"
         android:clickable="false"
         android:focusable="false" />
 
@@ -27,7 +27,7 @@
         android:layout_marginStart="10dp"
         android:textSize="15sp"
         android:textStyle="bold"
-        android:textColor="#B6C9E8" />
+        android:textColor="#A7DCC0" />
 
     <TextView
         android:id="@+id/tv_latency"
@@ -36,6 +36,6 @@
         android:minWidth="64dp"
         android:gravity="end"
         android:textSize="13sp"
-        android:textColor="#7FA6D8" />
+        android:textColor="#7CC9A0" />
 
 </LinearLayout>

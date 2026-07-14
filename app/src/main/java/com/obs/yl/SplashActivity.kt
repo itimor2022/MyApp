@@ -124,10 +124,10 @@ class SplashActivity : AppCompatActivity() {
 
     private fun getLatencyColor(latencyMs: Long): Int {
         return when {
-            latencyMs == -2L -> Color.parseColor("#7FA6D8")
-            latencyMs < 0L -> Color.parseColor("#B8C7DB")
-            latencyMs < 100L -> Color.parseColor("#4DD3FF")
-            latencyMs <= 500L -> Color.parseColor("#8BB8FF")
+            latencyMs == -2L -> Color.parseColor("#7CC9A0")
+            latencyMs < 0L -> Color.parseColor("#A9C7B6")
+            latencyMs < 100L -> Color.parseColor("#50E3A4")
+            latencyMs <= 500L -> Color.parseColor("#8DDCB8")
             else -> Color.parseColor("#FF8AA1")
         }
     }
@@ -163,7 +163,7 @@ class SplashActivity : AppCompatActivity() {
 
                 view.findViewById<TextView>(R.id.tv_route).apply {
                     text = routeNames[position]
-                    setTextColor(if (isChecked) Color.parseColor("#EEF5FF") else Color.parseColor("#B6C9E8"))
+                    setTextColor(if (isChecked) Color.parseColor("#EAFDF3") else Color.parseColor("#A7DCC0"))
                 }
 
                 view.findViewById<TextView>(R.id.tv_latency).apply {
