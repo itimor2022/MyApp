@@ -49,6 +49,8 @@ class RemoteConfigRepository(
             "cfg.65572.top",
             "cfg.qlzgd.one",
             "cfg.qlzg2.one",
+            "cfg.111819.it.com",
+            "cfg.11822.it.com",
         )
 
         private fun defaultHttpClient(): OkHttpClient {
