@@ -6,110 +6,105 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
-import org.xbill.DNS.Lookup
-import org.xbill.DNS.SimpleResolver
+import okhttp3.HttpUrl.Companion.toHttpUrl
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import org.xbill.DNS.DClass
+import org.xbill.DNS.Message
+import org.xbill.DNS.Name
+import org.xbill.DNS.Record
+import org.xbill.DNS.Section
 import org.xbill.DNS.TXTRecord
 import org.xbill.DNS.Type
+import org.xbill.DNS.Flags
+import java.util.Base64
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
 
 /**
- * DNS TXT 解析器
+ * DoH (DNS over HTTPS) TXT 解析器
  *
- * 优化点（兼容中国大陆网络环境）：
- *  1. DNS 服务器列表重排：大陆 DNS 优先，境外 DNS 兜底，最后回退系统 DNS
- *  2. 并发探测：同一时间向多个 DNS 发请求，取最先返回且非空的结果
- *  3. UDP -> TCP 自动降级：部分运营商对 UDP/53 限速，超时后切到 TCP/53
- *  4. 60 秒结果缓存：同一域名短时间内复用，避免重复查询拖慢启动
- *  5. 单服务器超时：3 秒（并发场景下整体仍快于原串行 4 秒 * 4）
+ * 协议遵循 RFC 8484（wireformat GET）：
+ *   GET https://<endpoint>/dns-query?dns=<base64url(msg)>
+ *   Accept: application/dns-message
+ *
+ * DoH 端点（顺序：大陆优先 -> 境外兑底）：
+ *   1. https://dns.alidns.com/dns-query      阿里
+ *   2. https://doh.pub/dns-query             腾讯 DNSPod
+ *   3. https://cloudflare-dns.com/dns-query  Cloudflare
+ *   4. https://dns.google/dns-query          Google
  */
 object DnsTxtResolver {
 
     private const val TAG = "DNS_FLOW"
-
-    /** 单个 DNS 服务器超时（秒） */
-    private const val SINGLE_DNS_TIMEOUT_SEC = 3L
-
-    /** 整体解析超时（秒）：即使所有并发都慢，也要在此时返回 */
-    private const val OVERALL_TIMEOUT_SEC = 6L
-
-    /** TXT 结果缓存时长（毫秒） */
+    private const val SINGLE_DOH_TIMEOUT_SEC = 4L
+    private const val OVERALL_TIMEOUT_SEC = 8L
     private const val CACHE_TTL_MS = 60_000L
 
-    /**
-     * DNS 服务器列表
-     * 顺序：大陆主流 -> 境外公共 -> 系统 DNS（null）
-     * 并发场景下顺序不再关键，但保持大陆优先便于日志观察
-     */
-    private val dnsServers = listOf(
-        // 阿里 DNS：大陆访问最快
-        "223.5.5.5",
-        // DNSPod：腾讯，南方访问快
-        "119.29.29.29",
-        // 114DNS：覆盖面广，电信/移动通用
-        "114.114.114.114",
-        // 百度 DNS
-        "180.76.76.76",
-        // Google：大陆可能慢但有时可达，作为兜底
-        "8.8.8.8",
-        // Cloudflare：境外兜底
-        "1.1.1.1",
-        // 最后回退到系统 DNS
-        null
+    private val dohEndpoints = listOf(
+        "https://dns.alidns.com/dns-query",
+        "https://doh.pub/dns-query",
+        "https://cloudflare-dns.com/dns-query",
+        "https://dns.google/dns-query",
     )
 
-    /** 缓存：domain -> (timestamp, result) */
-    private val cache = ConcurrentHashMap<String, CacheEntry>()
+    private val httpClient: OkHttpClient by lazy {
+        OkHttpClient.Builder()
+            .connectTimeout(SINGLE_DOH_TIMEOUT_SEC, TimeUnit.SECONDS)
+            .readTimeout(SINGLE_DOH_TIMEOUT_SEC, TimeUnit.SECONDS)
+            .writeTimeout(SINGLE_DOH_TIMEOUT_SEC, TimeUnit.SECONDS)
+            .retryOnConnectionFailure(false)
+            .followRedirects(false)
+            .followSslRedirects(false)
+            .build()
+    }
 
     private data class CacheEntry(
         val timestamp: Long,
         val records: List<String>
     )
 
+    private val cache = ConcurrentHashMap<String, CacheEntry>()
+
     /**
-     * 解析指定域名的 TXT 记录。
-     *
-     * @param domain 要解析的域名
-     * @return TXT 记录字符串列表（已合并多段、trim、去重）；失败返回空列表
+     * 通过 DoH 解析指定域名的 TXT 记录。
      */
     suspend fun resolve(domain: String): List<String> = withContext(Dispatchers.IO) {
         if (domain.isBlank()) return@withContext emptyList()
 
         val target = domain.trim().removeSuffix(".")
 
-        // 1. 查缓存
         val cached = cache[target]
         if (cached != null && System.currentTimeMillis() - cached.timestamp < CACHE_TTL_MS) {
             LogUtil.e(TAG, "resolve cache-hit domain=$target records=${cached.records.size}")
             return@withContext cached.records
         }
 
-        // 2. 并发向所有 DNS 探测，取最先成功的
         val result = queryWithFallback(target)
 
-        // 3. 写入缓存（即使是空结果也缓存一段时间，避免失败风暴）
         cache[target] = CacheEntry(System.currentTimeMillis(), result)
 
         if (result.isEmpty()) {
-            LogUtil.e(TAG, "resolve failed domain=$target all dns empty")
+            LogUtil.e(TAG, "resolve failed domain=$target all doh empty")
         } else {
             LogUtil.e(TAG, "resolve success domain=$target txtCount=${result.size}")
         }
         result
     }
 
+
+
     /**
-     * 并发向所有 DNS 探测：UDP 优先，超时降级 TCP。
-     * 任一返回非空 TXT 即视为成功，整体受 OVERALL_TIMEOUT_SEC 约束。
+     * 并发向所有 DoH 端点探测，取最先返回且非空 TXT 的结果。
      */
     private suspend fun queryWithFallback(target: String): List<String> {
         return withTimeoutOrNull(OVERALL_TIMEOUT_SEC * 1000L) {
             coroutineScope {
-                dnsServers.map { server ->
+                dohEndpoints.map { endpoint ->
                     async(Dispatchers.IO) {
-                        server to querySingleWithTcpFallback(target, server)
+                        endpoint to querySingleDoh(target, endpoint)
                     }
                 }.awaitAll()
-                    // 取第一个非空结果；保留顺序便于排查
                     .firstOrNull { (_, records) -> records.isNotEmpty() }
                     ?.second
                     ?: emptyList()
@@ -118,58 +113,63 @@ object DnsTxtResolver {
     }
 
     /**
-     * 单个 DNS 服务器查询：先 UDP，超时/失败降级到 TCP。
+     * 向单个 DoH 端点查询 TXT 记录（RFC 8484 wireformat GET）。
      */
-    private fun querySingleWithTcpFallback(target: String, server: String?): List<String> {
-        val label = server ?: "system"
-        // 先尝试 UDP
-        val udpResult = runQuery(target, server, useTcp = false)
-        if (udpResult.isNotEmpty()) {
-            LogUtil.e(TAG, "resolve udp-ok domain=$target dns=$label")
-            return udpResult
-        }
-        // UDP 无结果 -> 降级 TCP
-        LogUtil.e(TAG, "resolve udp-empty domain=$target dns=$label, fallback to TCP")
-        return runQuery(target, server, useTcp = true)
-    }
-
-    /**
-     * 在指定 DNS 服务器上执行一次 TXT 查询。
-     */
-    private fun runQuery(target: String, server: String?, useTcp: Boolean): List<String> {
-        val label = server ?: "system"
-        try {
-            val lookup = Lookup(target, Type.TXT)
-
-            if (!server.isNullOrBlank()) {
-                val resolver = SimpleResolver(server)
-                resolver.setTimeout(SINGLE_DNS_TIMEOUT_SEC.toInt())
-                if (useTcp) resolver.setTCP(true)
-                lookup.setResolver(resolver)
+    private fun querySingleDoh(target: String, endpoint: String): List<String> {
+        return try {
+            // dnsjava 3.6.3: newQuery(Record)
+            val qname = Name.fromString("$target.")
+            val queryRecord = Record.newRecord(qname, Type.TXT, DClass.IN)
+            val queryMsg = Message.newQuery(queryRecord).apply {
+                header.setFlag(Flags.RD.toInt())
             }
+            val dnsWire = queryMsg.toWire()
+            val dnsB64 = Base64.getUrlEncoder().withoutPadding().encodeToString(dnsWire)
 
-            lookup.setCache(null)
-            val records = lookup.run()
+            val url = "$endpoint?dns=$dnsB64".toHttpUrl()
+            val request = Request.Builder()
+                .url(url)
+                .header("Accept", "application/dns-message")
+                .get()
+                .build()
 
-            LogUtil.e(
-                TAG,
-                "resolve done domain=$target dns=$label tcp=$useTcp " +
-                        "result=${lookup.result} error=${lookup.errorString}"
-            )
+            LogUtil.e(TAG, "doh start domain=$target endpoint=$endpoint")
 
-            return records
-                ?.mapNotNull { record -> (record as? TXTRecord)?.strings?.joinToString(separator = "") }
-                ?.map { it.trim() }
-                ?.filter { it.isNotBlank() }
-                ?.distinct()
-                ?: emptyList()
+            httpClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    LogUtil.e(TAG, "doh http error domain=$target endpoint=$endpoint code=${response.code}")
+                    return emptyList()
+                }
+
+                val body: ByteArray = response.body?.bytes() ?: ByteArray(0)
+                if (body.isEmpty()) {
+                    LogUtil.e(TAG, "doh empty body domain=$target endpoint=$endpoint")
+                    return emptyList()
+                }
+
+                val respMsg = try {
+                    Message(body)
+                } catch (e: Exception) {
+                    LogUtil.e(TAG, "doh parse error domain=$target endpoint=$endpoint msg=${e.message}", e)
+                    return emptyList()
+                }
+
+                val rcode = respMsg.header.rcode
+                val records: Array<Record> = respMsg.getSectionArray(Section.ANSWER)
+
+                LogUtil.e(TAG, "doh done domain=$target endpoint=$endpoint rcode=$rcode answerCount=${records.size}")
+
+                records.mapNotNull { record ->
+                    (record as? TXTRecord)?.strings?.joinToString(separator = "")
+                }
+                    .map { it.trim() }
+                    .filter { it.isNotBlank() }
+                    .distinct()
+            }
         } catch (e: Exception) {
-            LogUtil.e(
-                TAG,
-                "resolve error domain=$target dns=$label tcp=$useTcp msg=${e.message}",
-                e
-            )
-            return emptyList()
+            LogUtil.e(TAG, "doh error domain=$target endpoint=$endpoint msg=${e.message}", e)
+            emptyList()
         }
     }
 }
+
