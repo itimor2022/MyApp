@@ -163,7 +163,7 @@ class RemoteConfigRepository(
         }.getOrNull()
     }
 
-    private fun fetchConfigFromDns(domain: String): RemoteConfig? {
+    private suspend fun fetchConfigFromDns(domain: String): RemoteConfig? {
         val txtList = DnsTxtResolver.resolve(domain)
         if (txtList.isEmpty()) return null
 
