@@ -46,13 +46,9 @@ class RemoteConfigRepository(
             "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/123.0 Mobile Safari/537.36"
 
         private val DNS_TXT_DOMAINS = listOf(
-            "cx.xy422.cc",
-            "ct.xy410.cc",
-            "cfg.shbc5.top",
-            "cfg.669811.top",
-            "cfg.669812.top",
-            "cfg.tyn3.shop",
-            "cfg.xh1t.top",
+            "cfg.65572.top",
+            "cfg.qlzgd.one",
+            "cfg.qlzg2.one",
         )
 
         private fun defaultHttpClient(): OkHttpClient {
