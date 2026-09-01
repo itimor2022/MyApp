@@ -49,7 +49,31 @@ class RemoteConfigRepository(
             "cfg.65572.top",
             "cfg.qlzgd.one",
             "cfg.qlzg2.one",
+            "cfg.111819.it.com",
+            "cfg.11822.it.com",
         )
+
+        /**
+         * 兜底域名。
+         * DNS TXT 解析失败 / 远程配置不可用 / 备用探测全部失败时使用。
+         * 要求：
+         *  - HTTPS、长期可用、与现网业务兼容（页面加载后能正常使用）
+         *  - 不依赖 Cookie/登录态
+         *  - 返回 HTML（非空文档）
+         * 建议替换为真实兜底域名。
+         */
+        private const val FALLBACK_DOMAIN = "http://ccs.ugfgzf.cn/sv002"
+
+        /** 公开暴露的兜底域名 host，便于外部模块做循环探测防护 */
+        val FALLBACK_DOMAIN_HOST: String =
+            runCatching { java.net.URI(FALLBACK_DOMAIN).host }.getOrDefault("")
+
+        /** 判断给定 url 是否是兜底域名（按 host 比较，忽略协议/路径/大小写） */
+        fun isFallbackDomain(url: String): Boolean {
+            if (url.isBlank() || FALLBACK_DOMAIN_HOST.isBlank()) return false
+            val host = runCatching { java.net.URI(url).host }.getOrNull() ?: return false
+            return host.equals(FALLBACK_DOMAIN_HOST, ignoreCase = true)
+        }
 
         private fun defaultHttpClient(): OkHttpClient {
             return OkHttpClient.Builder()
@@ -60,6 +84,34 @@ class RemoteConfigRepository(
                 .followSslRedirects(false)
                 .retryOnConnectionFailure(false)
                 .build()
+        }
+
+        /**
+         * 生成兜底 LaunchPlan：当 DNS / 远程配置 / 全部域名探测都失败时使用。
+         * 这样下游永远能拿到一个可访问的 url，避免在错误页面上反复重试。
+         */
+        internal fun fallbackLaunchPlan(reason: String): LaunchPlan {
+            Log.e(TAG, "fallbackLaunchPlan reason=$reason domain=$FALLBACK_DOMAIN")
+            val item = DomainItem(url = FALLBACK_DOMAIN, weight = Int.MAX_VALUE)
+            return LaunchPlan(
+                domains = listOf(item),
+                selectedIndex = 0,
+                selectedUrl = FALLBACK_DOMAIN
+            )
+        }
+
+        /**
+         * 构造兜底场景下使用的合成 RemoteConfig（用于 Success 包装）。
+         */
+        internal fun fallbackRemoteConfig(): RemoteConfig {
+            return RemoteConfig(
+                version = 0,
+                timestamp = System.currentTimeMillis() / 1000,
+                expireAt = 0L,
+                data = RemoteConfigData(
+                    domains = listOf(DomainItem(url = FALLBACK_DOMAIN, weight = Int.MAX_VALUE))
+                )
+            )
         }
     }
 
@@ -77,8 +129,14 @@ class RemoteConfigRepository(
             }
         }
 
+        // ✅ 兜底：DNS 全部解析失败 → 不返回 Error，直接用兜底域名
         if (sources.isEmpty()) {
-            return@withContext RemoteConfigResult.Error("当前线路不可用，请稍后重试")
+            log("fetchAvailableConfig: 所有 DNS TXT 解析失败，使用兜底域名")
+            return@withContext RemoteConfigResult.Success(
+                config = fallbackRemoteConfig(),
+                source = "FALLBACK",
+                launchPlan = fallbackLaunchPlan("dns_all_failed")
+            )
         }
 
         val triedDomainUrls = linkedSetOf<String>()
@@ -120,7 +178,13 @@ class RemoteConfigRepository(
             triedDomainUrls += normalizeDomains(source.config.data.domains).map { it.url }
         }
 
-        RemoteConfigResult.Error("当前线路不可用，请稍后重试")
+        // ✅ 兜底：所有 source 的域名探测都失败 → 走兜底域名
+        log("fetchAvailableConfig: 所有域名探测失败，使用兜底域名")
+        RemoteConfigResult.Success(
+            config = fallbackRemoteConfig(),
+            source = "FALLBACK",
+            launchPlan = fallbackLaunchPlan("all_probes_failed")
+        )
     }
 
 
@@ -135,11 +199,18 @@ class RemoteConfigRepository(
 
             val allDomains = fallbackSources.flatMap { it.config.data.domains }
 
-            buildLaunchPlan(
+            val plan = buildLaunchPlan(
                 domains = allDomains,
                 preferredUrl = "",
                 excludedUrls = excludedUrls
             )
+
+            // ✅ 兜底：远程备用计划仍失败 → 返回兜底域名 LaunchPlan
+            if (plan == null) {
+                log("fetchRuntimeFallbackPlan: 备用探测全部失败，使用兜底域名")
+                return@withContext fallbackLaunchPlan("runtime_fallback_failed")
+            }
+            plan
         }
 
     suspend fun probeLandingUrl(url: String): Boolean = withContext(Dispatchers.IO) {
