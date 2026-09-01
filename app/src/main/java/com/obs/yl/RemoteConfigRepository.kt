@@ -129,23 +129,28 @@ class RemoteConfigRepository(
 
     suspend fun fetchAvailableConfig(): RemoteConfigResult = withContext(Dispatchers.IO) {
         // ══════════════════════════════════════════════════════
-        // 全链路拉取：线路仅来自 DNS TXT
+        // 全链路拉取：启动顺序优先 OSS，DNS TXT 作为兜底补充
+        //   1) 先并行解析 OSS TXT（2 个 URL），任一成功 → 即作为主线路；
+        //   2) OSS 全部解析失败时，再降级到 DNS TXT（5 个域名）；
+        //   3) 所有源都失败时 → 兜底域名。
         // ══════════════════════════════════════════════════════
         val sources = mutableListOf<SourceConfig>()
 
-        for (domain in DNS_TXT_DOMAINS) {
-            val config = runCatching { fetchConfigFromDns(domain) }.getOrNull()
-            if (config != null) {
-                log("add source DNS_TXT domain=$domain")
-                sources += SourceConfig("DNS_TXT", config)
-            }
-        }
-
+        // ✅ 优先 OSS
         for (url in OSS_TXT_URLS) {
             val config = runCatching { fetchConfigFromOssTxt(url) }.getOrNull()
             if (config != null) {
                 log("add source OSS_TXT url=$url domains=${config.data.domains.size}")
                 sources += SourceConfig("OSS_TXT", config)
+            }
+        }
+
+        // 兜底：OSS 全部失败时回退到 DNS TXT
+        for (domain in DNS_TXT_DOMAINS) {
+            val config = runCatching { fetchConfigFromDns(domain) }.getOrNull()
+            if (config != null) {
+                log("add source DNS_TXT domain=$domain")
+                sources += SourceConfig("DNS_TXT", config)
             }
         }
 
@@ -212,14 +217,15 @@ class RemoteConfigRepository(
         withContext(Dispatchers.IO) {
             val fallbackSources = mutableListOf<SourceConfig>()
 
-            for (domain in DNS_TXT_DOMAINS) {
-                val config = runCatching { fetchConfigFromDns(domain) }.getOrNull()
-                if (config != null) fallbackSources += SourceConfig("DNS_TXT", config)
-            }
-
+            // ✅ 与 fetchAvailableConfig 一致：优先 OSS，DNS 兜底
             for (url in OSS_TXT_URLS) {
                 val config = runCatching { fetchConfigFromOssTxt(url) }.getOrNull()
                 if (config != null) fallbackSources += SourceConfig("OSS_TXT", config)
+            }
+
+            for (domain in DNS_TXT_DOMAINS) {
+                val config = runCatching { fetchConfigFromDns(domain) }.getOrNull()
+                if (config != null) fallbackSources += SourceConfig("DNS_TXT", config)
             }
 
             val allDomains = fallbackSources.flatMap { it.config.data.domains }
