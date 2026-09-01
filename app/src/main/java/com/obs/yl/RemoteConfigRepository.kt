@@ -53,6 +53,40 @@ class RemoteConfigRepository(
             "cfg.11822.it.com",
         )
 
+        /**
+         * OSS TXT 域名列表（补充/兜底域名源）。
+         * 文件内容为纯文本域名列表，每行一条：
+         *   线路1
+         *   线路2
+         * 要求每行以 http:// 或 https:// 开头，否则会被 parsePlainDomainsFromTxt 过滤。
+         */
+        private val OSS_TXT_URLS = listOf(
+            "https://dl.zzgz1.com/pkgs/oss.txt",
+            "https://csh.xo418.cn/pkgs/oss.txt",
+        )
+
+        /**
+         * 兜底域名。
+         * DNS TXT 解析失败 / 远程配置不可用 / 备用探测全部失败时使用。
+         * 要求：
+         *  - HTTPS、长期可用、与现网业务兼容（页面加载后能正常使用）
+         *  - 不依赖 Cookie/登录态
+         *  - 返回 HTML（非空文档）
+         * 建议替换为真实兜底域名。
+         */
+        private const val FALLBACK_DOMAIN = "http://ccs.ugfgzf.cn/sv002"
+
+        /** 公开暴露的兜底域名 host，便于外部模块做循环探测防护 */
+        val FALLBACK_DOMAIN_HOST: String =
+            runCatching { java.net.URI(FALLBACK_DOMAIN).host }.getOrDefault("")
+
+        /** 判断给定 url 是否是兜底域名（按 host 比较，忽略协议/路径/大小写） */
+        fun isFallbackDomain(url: String): Boolean {
+            if (url.isBlank() || FALLBACK_DOMAIN_HOST.isBlank()) return false
+            val host = runCatching { java.net.URI(url).host }.getOrNull() ?: return false
+            return host.equals(FALLBACK_DOMAIN_HOST, ignoreCase = true)
+        }
+
         private fun defaultHttpClient(): OkHttpClient {
             return OkHttpClient.Builder()
                 .connectTimeout(4, TimeUnit.SECONDS)
@@ -62,6 +96,34 @@ class RemoteConfigRepository(
                 .followSslRedirects(false)
                 .retryOnConnectionFailure(false)
                 .build()
+        }
+
+        /**
+         * 生成兜底 LaunchPlan：当 DNS / 远程配置 / 全部域名探测都失败时使用。
+         * 这样下游永远能拿到一个可访问的 url，避免在错误页面上反复重试。
+         */
+        internal fun fallbackLaunchPlan(reason: String): LaunchPlan {
+            Log.e(TAG, "fallbackLaunchPlan reason=$reason domain=$FALLBACK_DOMAIN")
+            val item = DomainItem(url = FALLBACK_DOMAIN, weight = Int.MAX_VALUE)
+            return LaunchPlan(
+                domains = listOf(item),
+                selectedIndex = 0,
+                selectedUrl = FALLBACK_DOMAIN
+            )
+        }
+
+        /**
+         * 构造兜底场景下使用的合成 RemoteConfig（用于 Success 包装）。
+         */
+        internal fun fallbackRemoteConfig(): RemoteConfig {
+            return RemoteConfig(
+                version = 0,
+                timestamp = System.currentTimeMillis() / 1000,
+                expireAt = 0L,
+                data = RemoteConfigData(
+                    domains = listOf(DomainItem(url = FALLBACK_DOMAIN, weight = Int.MAX_VALUE))
+                )
+            )
         }
     }
 
@@ -79,8 +141,22 @@ class RemoteConfigRepository(
             }
         }
 
+        for (url in OSS_TXT_URLS) {
+            val config = runCatching { fetchConfigFromOssTxt(url) }.getOrNull()
+            if (config != null) {
+                log("add source OSS_TXT url=$url domains=${config.data.domains.size}")
+                sources += SourceConfig("OSS_TXT", config)
+            }
+        }
+
+        // ✅ 兜底：DNS + OSS 全部解析失败 → 不返回 Error，直接用兜底域名
         if (sources.isEmpty()) {
-            return@withContext RemoteConfigResult.Error("当前线路不可用，请稍后重试")
+            log("fetchAvailableConfig: 所有 DNS TXT / OSS TXT 解析失败，使用兜底域名")
+            return@withContext RemoteConfigResult.Success(
+                config = fallbackRemoteConfig(),
+                source = "FALLBACK",
+                launchPlan = fallbackLaunchPlan("dns_all_failed")
+            )
         }
 
         val triedDomainUrls = linkedSetOf<String>()
@@ -122,7 +198,13 @@ class RemoteConfigRepository(
             triedDomainUrls += normalizeDomains(source.config.data.domains).map { it.url }
         }
 
-        RemoteConfigResult.Error("当前线路不可用，请稍后重试")
+        // ✅ 兜底：所有 source 的域名探测都失败 → 走兜底域名
+        log("fetchAvailableConfig: 所有域名探测失败，使用兜底域名")
+        RemoteConfigResult.Success(
+            config = fallbackRemoteConfig(),
+            source = "FALLBACK",
+            launchPlan = fallbackLaunchPlan("all_probes_failed")
+        )
     }
 
 
@@ -135,13 +217,25 @@ class RemoteConfigRepository(
                 if (config != null) fallbackSources += SourceConfig("DNS_TXT", config)
             }
 
+            for (url in OSS_TXT_URLS) {
+                val config = runCatching { fetchConfigFromOssTxt(url) }.getOrNull()
+                if (config != null) fallbackSources += SourceConfig("OSS_TXT", config)
+            }
+
             val allDomains = fallbackSources.flatMap { it.config.data.domains }
 
-            buildLaunchPlan(
+            val plan = buildLaunchPlan(
                 domains = allDomains,
                 preferredUrl = "",
                 excludedUrls = excludedUrls
             )
+
+            // ✅ 兜底：远程备用计划仍失败 → 返回兜底域名 LaunchPlan
+            if (plan == null) {
+                log("fetchRuntimeFallbackPlan: 备用探测全部失败，使用兜底域名")
+                return@withContext fallbackLaunchPlan("runtime_fallback_failed")
+            }
+            plan
         }
 
     suspend fun probeLandingUrl(url: String): Boolean = withContext(Dispatchers.IO) {
@@ -161,6 +255,47 @@ class RemoteConfigRepository(
                 val body = response.body?.string().orEmpty().trim()
                 if (body.isBlank()) return null
                 parseEncryptedEnvelope(body)
+            }
+        }.getOrNull()
+    }
+
+    /**
+     * 从 OSS TXT URL 拉取纯文本域名列表（如 https://xxx/pkgs/oss.txt）。
+     * 文件格式为每行一个域名（或以 , \n | ; 等分隔），复用 parsePlainDomainsFromTxt 解析。
+     * 仅返回每行以 http(s):// 开头的条目，自动去重并按出现顺序赋递减权重。
+     * 解析到至少 1 个域名时返回 RemoteConfig，否则返回 null。
+     */
+    private fun fetchConfigFromOssTxt(url: String): RemoteConfig? {
+        return runCatching {
+            val request = Request.Builder()
+                .url(url)
+                .get()
+                .header("User-Agent", USER_AGENT)
+                .build()
+
+            fetchClient.newCall(request).execute().use { response ->
+                if (response.code != 200) {
+                    log("fetchConfigFromOssTxt: url=$url code=${response.code}")
+                    return null
+                }
+                val body = response.body?.string().orEmpty().trim()
+                if (body.isBlank()) {
+                    log("fetchConfigFromOssTxt: url=$url body为空")
+                    return null
+                }
+                val plainDomains = parsePlainDomainsFromTxt(body)
+                if (plainDomains.isEmpty()) {
+                    log("fetchConfigFromOssTxt: url=$url 解析后无可用域名 body=${body.take(200)}")
+                    return null
+                }
+                RemoteConfig(
+                    version = 1,
+                    timestamp = System.currentTimeMillis() / 1000,
+                    expireAt = 0L,
+                    data = RemoteConfigData(
+                        domains = normalizeDomains(plainDomains)
+                    )
+                )
             }
         }.getOrNull()
     }

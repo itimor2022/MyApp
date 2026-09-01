@@ -88,7 +88,17 @@ class SplashActivity : AppCompatActivity() {
 
             when (result) {
                 is RemoteConfigResult.Success -> {
-                    showRoutePickerDialog(result)
+                    // ✅ 兜底来源：跳过选线弹窗，直接进入主界面
+                    if (result.source == "FALLBACK") {
+                        gotoMain(
+                            selectedUrl = result.launchPlan.selectedUrl,
+                            selectedIndex = result.launchPlan.selectedIndex,
+                            domainsJson = gson.toJson(result.launchPlan.domains),
+                            source = result.source
+                        )
+                    } else {
+                        showRoutePickerDialog(result)
+                    }
                 }
 
                 is RemoteConfigResult.Error -> {
