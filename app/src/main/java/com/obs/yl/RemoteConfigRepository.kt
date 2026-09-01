@@ -135,22 +135,30 @@ class RemoteConfigRepository(
         //   3) 所有源都失败时 → 兜底域名。
         // ══════════════════════════════════════════════════════
         val sources = mutableListOf<SourceConfig>()
+        var ossResolved = false
 
-        // ✅ 优先 OSS
+        // ✅ OSS 优先：任一 OSS URL 拉到可用域名 → 立刻作为唯一主线路返回，不再尝试其他 OSS
         for (url in OSS_TXT_URLS) {
             val config = runCatching { fetchConfigFromOssTxt(url) }.getOrNull()
             if (config != null) {
                 log("add source OSS_TXT url=$url domains=${config.data.domains.size}")
                 sources += SourceConfig("OSS_TXT", config)
+                ossResolved = true
+                break   // OSS 拿到就立刻停，去探测业务域名
+            } else {
+                log("OSS unreachable url=$url, try next OSS")
             }
         }
 
-        // 兜底：OSS 全部失败时回退到 DNS TXT
-        for (domain in DNS_TXT_DOMAINS) {
-            val config = runCatching { fetchConfigFromDns(domain) }.getOrNull()
-            if (config != null) {
-                log("add source DNS_TXT domain=$domain")
-                sources += SourceConfig("DNS_TXT", config)
+        // 兜底：OSS 全部"链接本身打不开"时（ossResolved == false）才去请求 DNS TXT
+        if (!ossResolved) {
+            log("OSS all unreachable, fallback to DNS TXT")
+            for (domain in DNS_TXT_DOMAINS) {
+                val config = runCatching { fetchConfigFromDns(domain) }.getOrNull()
+                if (config != null) {
+                    log("add source DNS_TXT domain=$domain")
+                    sources += SourceConfig("DNS_TXT", config)
+                }
             }
         }
 
@@ -176,9 +184,13 @@ class RemoteConfigRepository(
             )
 
             if (primaryPlan != null) {
-                val remainingBackupDomains = sources
-                    .drop(index + 1)
-                    .flatMap { it.config.data.domains }
+                // ✅ OSS 拉成功 → 不再合并 DNS 的业务域名，直接用 OSS 自己的
+                //    只有在 OSS 完全没拉到、降到 DNS 路径时，才把后续 DNS 的域名合并进来
+                val remainingBackupDomains = if (source.source == "OSS_TXT") {
+                    emptyList()
+                } else {
+                    sources.drop(index + 1).flatMap { it.config.data.domains }
+                }
 
                 val mergedDomains = mergeDomains(
                     primary = primaryPlan.domains,
@@ -200,6 +212,16 @@ class RemoteConfigRepository(
                 )
             }
 
+            // ✅ OSS 拿到了但业务域名全失败 → 不再尝试 DNS，直接走兜底
+            if (source.source == "OSS_TXT") {
+                log("OSS got config but all business domains probe failed, skip DNS, use fallback")
+                return@withContext RemoteConfigResult.Success(
+                    config = fallbackRemoteConfig(),
+                    source = "FALLBACK",
+                    launchPlan = fallbackLaunchPlan("oss_probe_all_failed")
+                )
+            }
+
             triedDomainUrls += normalizeDomains(source.config.data.domains).map { it.url }
         }
 
@@ -216,16 +238,24 @@ class RemoteConfigRepository(
     suspend fun fetchRuntimeFallbackPlan(excludedUrls: Set<String>): LaunchPlan? =
         withContext(Dispatchers.IO) {
             val fallbackSources = mutableListOf<SourceConfig>()
+            var ossResolved = false
 
-            // ✅ 与 fetchAvailableConfig 一致：优先 OSS，DNS 兜底
+            // ✅ 与 fetchAvailableConfig 一致：OSS 优先，第一个能拉到的 OSS 即停
             for (url in OSS_TXT_URLS) {
                 val config = runCatching { fetchConfigFromOssTxt(url) }.getOrNull()
-                if (config != null) fallbackSources += SourceConfig("OSS_TXT", config)
+                if (config != null) {
+                    fallbackSources += SourceConfig("OSS_TXT", config)
+                    ossResolved = true
+                    break
+                }
             }
 
-            for (domain in DNS_TXT_DOMAINS) {
-                val config = runCatching { fetchConfigFromDns(domain) }.getOrNull()
-                if (config != null) fallbackSources += SourceConfig("DNS_TXT", config)
+            // OSS 全部打不开时回退 DNS
+            if (!ossResolved) {
+                for (domain in DNS_TXT_DOMAINS) {
+                    val config = runCatching { fetchConfigFromDns(domain) }.getOrNull()
+                    if (config != null) fallbackSources += SourceConfig("DNS_TXT", config)
+                }
             }
 
             val allDomains = fallbackSources.flatMap { it.config.data.domains }
