@@ -61,6 +61,8 @@ class RemoteConfigRepository(
          * 要求每行以 http:// 或 https:// 开头，否则会被 parsePlainDomainsFromTxt 过滤。
          */
         private val OSS_TXT_URLS = listOf(
+            "https://gz-1398539102.cos.ap-guangzhou.myqcloud.com/oss/oss.txt",
+            "https://nj-1398539102.cos.ap-nanjing.myqcloud.com/oss/oss.txt",
             "https://dl.zzgz1.com/pkgs/oss.txt",
             "https://csh.xo418.cn/pkgs/oss.txt",
         )
@@ -130,21 +132,31 @@ class RemoteConfigRepository(
     suspend fun fetchAvailableConfig(): RemoteConfigResult = withContext(Dispatchers.IO) {
         // ══════════════════════════════════════════════════════
         // 全链路拉取：启动顺序优先 OSS，DNS TXT 作为兜底补充
-        //   1) 先并行解析 OSS TXT（2 个 URL），任一成功 → 即作为主线路；
-        //   2) OSS 全部解析失败时，再降级到 DNS TXT（5 个域名）；
+        //   1) 并行拉取所有 OSS TXT URL，按 OSS_TXT_URLS 列表顺序
+        //      选择第一个成功的作为主线路（"第一条不能访问就用第二条，依次往下"）；
+        //   2) 所有 OSS 全部失败时，再降级到 DNS TXT（5 个域名）；
         //   3) 所有源都失败时 → 兜底域名。
         // ══════════════════════════════════════════════════════
         val sources = mutableListOf<SourceConfig>()
         var ossResolved = false
 
-        // ✅ OSS 优先：任一 OSS URL 拉到可用域名 → 立刻作为唯一主线路返回，不再尝试其他 OSS
-        for (url in OSS_TXT_URLS) {
-            val config = runCatching { fetchConfigFromOssTxt(url) }.getOrNull()
+        // ✅ OSS 优先：并行拉取所有 OSS，按 OSS_TXT_URLS 顺序选取第一个成功的
+        //    语义：第 1 条不能访问就用第 2 条，依次往下；只有所有 OSS 都失败才走 DNS
+        val ossResults: List<Pair<String, RemoteConfig?>> = coroutineScope {
+            OSS_TXT_URLS.map { url ->
+                async {
+                    val config = runCatching { fetchConfigFromOssTxt(url) }.getOrNull()
+                    url to config
+                }
+            }.awaitAll()
+        }
+        // 按 OSS_TXT_URLS 原始顺序遍历，取第一个成功的结果
+        for ((url, config) in ossResults) {
             if (config != null) {
                 log("add source OSS_TXT url=$url domains=${config.data.domains.size}")
                 sources += SourceConfig("OSS_TXT", config)
                 ossResolved = true
-                break   // OSS 拿到就立刻停，去探测业务域名
+                break   // 找到第一个可用的 OSS 后立即停止，去探测业务域名
             } else {
                 log("OSS unreachable url=$url, try next OSS")
             }
@@ -240,13 +252,23 @@ class RemoteConfigRepository(
             val fallbackSources = mutableListOf<SourceConfig>()
             var ossResolved = false
 
-            // ✅ 与 fetchAvailableConfig 一致：OSS 优先，第一个能拉到的 OSS 即停
-            for (url in OSS_TXT_URLS) {
-                val config = runCatching { fetchConfigFromOssTxt(url) }.getOrNull()
+            // ✅ 与 fetchAvailableConfig 一致：并行拉取所有 OSS，按 OSS_TXT_URLS 顺序
+            //    选取第一个可用的 OSS（第 1 条不能访问就用第 2 条，依次往下）
+            val ossResults: List<Pair<String, RemoteConfig?>> = coroutineScope {
+                OSS_TXT_URLS.map { url ->
+                    async {
+                        val config = runCatching { fetchConfigFromOssTxt(url) }.getOrNull()
+                        url to config
+                    }
+                }.awaitAll()
+            }
+            for ((url, config) in ossResults) {
                 if (config != null) {
                     fallbackSources += SourceConfig("OSS_TXT", config)
                     ossResolved = true
                     break
+                } else {
+                    log("OSS unreachable url=$url, try next OSS")
                 }
             }
 
