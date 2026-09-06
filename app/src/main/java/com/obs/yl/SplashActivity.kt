@@ -228,10 +228,12 @@ class SplashActivity : AppCompatActivity() {
 
         // 并发探测所有线路延迟，完成后统一刷新
         uiScope.launch {
-            val results = domains.mapIndexed { index, item ->
-                async(Dispatchers.IO) { index to measureLatencyMs(item.url) }
+            val results = domains.mapIndexed { index: Int, item: DomainItem ->
+                async<Pair<Int, Long>>(Dispatchers.IO) { index to measureLatencyMs(item.url) }
             }.awaitAll()
-            results.forEach { (index, ms) ->
+            for (result in results) {
+                val index: Int = result.first
+                val ms: Long = result.second
                 latencyValues[index] = ms
                 latencyTexts[index] = if (ms >= 0L) "${ms}ms" else "超时"
             }

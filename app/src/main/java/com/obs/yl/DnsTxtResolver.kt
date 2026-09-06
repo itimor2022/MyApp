@@ -42,10 +42,11 @@ object DnsTxtResolver {
     private const val CACHE_TTL_MS = 60_000L
 
     private val dohEndpoints = listOf(
-        "https://dns.alidns.com/dns-query",
-        "https://doh.pub/dns-query",
-        "https://cloudflare-dns.com/dns-query",
-        "https://dns.google/dns-query",
+        "https://dns.alidns.com/dns-query",     // 阿里 DoH
+        "https://doh.pub/dns-query",             // 腾讯 DNSPod DoH
+        "https://doh.360.cn/dns-query",          // 360 安全 DoH
+        "https://cloudflare-dns.com/dns-query",  // Cloudflare 境外兜底
+        "https://dns.google/dns-query",          // Google 境外兜底
     )
 
     private val httpClient: OkHttpClient by lazy {

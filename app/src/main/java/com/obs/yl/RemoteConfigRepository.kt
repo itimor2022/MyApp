@@ -51,6 +51,23 @@ class RemoteConfigRepository(
             "cfg.qlzg2.one",
             "cfg.111819.it.com",
             "cfg.11822.it.com",
+            "cfg.osj1.shop",
+            "cfg.osnw.top",
+            "cfg.pj6.icu",
+            "cfg.tyn2.shop",
+            "cfg.tyn1.shop",
+        )
+
+        /** 备用 DNS 域名（主 OSS + 主 DNS 全部失败时使用，硬编码本地） */
+        private val FALLBACK_DNS_DOMAINS = listOf(
+            "cfg.112331.shop",
+            "cfg.112332.shop",
+            "cfg.112334.shop",
+        )
+
+        /** 备用 OSS 明文 txt（主 OSS + 主 DNS 全部失败时使用，硬编码本地） */
+        private val FALLBACK_OSS_URLS = listOf(
+            "https://bt.wlieiv.com/oss/oss.txt",
         )
 
         /**
@@ -60,11 +77,9 @@ class RemoteConfigRepository(
          *   线路2
          * 要求每行以 http:// 或 https:// 开头，否则会被 parsePlainDomainsFromTxt 过滤。
          */
-        private val OSS_TXT_URLS = listOf(
-            "https://gz-1398539102.cos.ap-guangzhou.myqcloud.com/oss/oss.txt",
-            "https://nj-1398539102.cos.ap-nanjing.myqcloud.com/oss/oss.txt",
-            "https://dl.zzgz1.com/pkgs/oss.txt",
+        private val OSS_TXT_URLS = listOf (
             "https://csh.xo418.cn/pkgs/oss.txt",
+            "https://bt.llrcgt.com/pkgs/oss.txt",
         )
 
         /**
@@ -174,9 +189,15 @@ class RemoteConfigRepository(
             }
         }
 
-        // ✅ 兜底：DNS + OSS 全部解析失败 → 不返回 Error，直接用兜底域名
+        // 兜底：DNS + OSS 全部解析失败 → 先尝试备用索引，再走最终兜底
         if (sources.isEmpty()) {
-            log("fetchAvailableConfig: 所有 DNS TXT / OSS TXT 解析失败，使用兜底域名")
+            log("fetchAvailableConfig: 主 OSS + 主 DNS 全部失败，尝试备用索引")
+            val fallbackResult = tryFallbackIndex()
+            if (fallbackResult != null) {
+                log("fetchAvailableConfig: 备用索引成功 source=${fallbackResult.source}")
+                return@withContext fallbackResult
+            }
+            log("fetchAvailableConfig: 备用索引也失败，使用兜底域名")
             return@withContext RemoteConfigResult.Success(
                 config = fallbackRemoteConfig(),
                 source = "FALLBACK",
@@ -280,7 +301,7 @@ class RemoteConfigRepository(
                 }
             }
 
-            val allDomains = fallbackSources.flatMap { it.config.data.domains }
+            val allDomains = fallbackSources.flatMap { sc: SourceConfig -> sc.config.data.domains }
 
             val plan = buildLaunchPlan(
                 domains = allDomains,
@@ -719,8 +740,67 @@ class RemoteConfigRepository(
         val source: String,
         val config: RemoteConfig
     )
-}
+    /**
+     * 备用兜底：主 OSS + 主 DNS 全部失败时，尝试 FALLBACK_OSS_URLS 和 FALLBACK_DNS_DOMAINS
+     */
+    private suspend fun tryFallbackIndex(): RemoteConfigResult.Success? {
+        // 1. 先尝试备用 OSS
+        for (url in FALLBACK_OSS_URLS) {
+            val config = runCatching { fetchConfigFromOssTxt(url) }.getOrNull()
+            if (config != null) {
+                log("tryFallbackIndex: 备用OSS成功 url=$url")
+                val plan = buildLaunchPlan(
+                    domains = config.data.domains,
+                    preferredUrl = "",
+                    excludedUrls = emptySet()
+                )
+                if (plan != null) {
+                    return RemoteConfigResult.Success(
+                        config = config,
+                        source = "FALLBACK_OSS",
+                        launchPlan = plan
+                    )
+                }
+                log("tryFallbackIndex: 备用OSS拿到配置但域名探测全失败 url=$url")
+            } else {
+                log("tryFallbackIndex: 备用OSS失败 url=$url")
+            }
+        }
 
+        // 2. 再尝试备用 DNS
+        val fallbackSources = mutableListOf<RemoteConfig>()
+        for (domain in FALLBACK_DNS_DOMAINS) {
+            val config = runCatching { fetchConfigFromDns(domain) }.getOrNull()
+            if (config != null) {
+                log("tryFallbackIndex: 备用DNS成功 domain=$domain")
+                fallbackSources += config
+            } else {
+                log("tryFallbackIndex: 备用DNS失败 domain=$domain")
+            }
+        }
+
+        if (fallbackSources.isNotEmpty()) {
+            val allDomains = fallbackSources.flatMap { rc: RemoteConfig -> rc.data.domains }
+            val plan = buildLaunchPlan(
+                domains = allDomains,
+                preferredUrl = "",
+                excludedUrls = emptySet()
+            )
+            if (plan != null) {
+                return RemoteConfigResult.Success(
+                    config = fallbackSources.first(),
+                    source = "FALLBACK_DNS",
+                    launchPlan = plan
+                )
+            }
+            log("tryFallbackIndex: 备用DNS有配置但域名探测全失败")
+        }
+
+        return null
+    }
+
+
+}
 sealed class RemoteConfigResult {
     data class Success(
         val config: RemoteConfig,
