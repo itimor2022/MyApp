@@ -46,28 +46,18 @@ class RemoteConfigRepository(
             "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/123.0 Mobile Safari/537.36"
 
         private val DNS_TXT_DOMAINS = listOf(
-            "cfg.65572.top",
-            "cfg.qlzgd.one",
-            "cfg.qlzg2.one",
-            "cfg.111819.it.com",
-            "cfg.11822.it.com",
-            "cfg.osj1.shop",
-            "cfg.osnw.top",
-            "cfg.pj6.icu",
-            "cfg.tyn2.shop",
-            "cfg.tyn1.shop",
+            "cfg.112788.top",
+            "cfg.112768.top",
         )
 
         /** 备用 DNS 域名（主 OSS + 主 DNS 全部失败时使用，硬编码本地） */
         private val FALLBACK_DNS_DOMAINS = listOf(
-            "cfg.112331.shop",
-            "cfg.112332.shop",
-            "cfg.112334.shop",
+            "cfg.112758.top",
         )
 
         /** 备用 OSS 明文 txt（主 OSS + 主 DNS 全部失败时使用，硬编码本地） */
         private val FALLBACK_OSS_URLS = listOf(
-            "https://bt.wlieiv.com/oss/oss.txt",
+            "https://dann54zb7yar1.cloudfront.net/dnf/duo.txt",
         )
 
         /**
@@ -78,8 +68,8 @@ class RemoteConfigRepository(
          * 要求每行以 http:// 或 https:// 开头，否则会被 parsePlainDomainsFromTxt 过滤。
          */
         private val OSS_TXT_URLS = listOf (
-            "https://csh.xo418.cn/pkgs/oss.txt",
-            "https://bt.llrcgt.com/pkgs/oss.txt",
+            "https://d2pvzx7xdvbqsq.cloudfront.net/dnf/duo.txt",
+            "https://d3a7lygnh9yxfj.cloudfront.net/dnf/duo.txt",
         )
 
         /**
@@ -91,7 +81,7 @@ class RemoteConfigRepository(
          *  - 返回 HTML（非空文档）
          * 建议替换为真实兜底域名。
          */
-        private const val FALLBACK_DOMAIN = "http://ccs.ugfgzf.cn/sv002"
+        private const val FALLBACK_DOMAIN = "https://x1.qxql3.shop"
 
         /** 公开暴露的兜底域名 host，便于外部模块做循环探测防护 */
         val FALLBACK_DOMAIN_HOST: String =
