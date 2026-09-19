@@ -173,7 +173,7 @@ class SplashActivity : AppCompatActivity() {
 
                 view.findViewById<TextView>(R.id.tv_route).apply {
                     text = routeNames[position]
-                    setTextColor(if (isChecked) Color.parseColor("#EEF5FF") else Color.parseColor("#B6C9E8"))
+                    setTextColor(if (isChecked) Color.parseColor("#39475b") else Color.parseColor("#5790ed"))
                 }
 
                 view.findViewById<TextView>(R.id.tv_latency).apply {
@@ -194,7 +194,7 @@ class SplashActivity : AppCompatActivity() {
         }
         applyRouteListHeight(listView, domains.size)
         dialogView.findViewById<TextView>(R.id.tv_route_hint).text =
-            "已为你推荐线路${recommended.coerceIn(0, domains.lastIndex) + 1}，你也可以手动切换"
+            "已为你推荐 [线路${recommended.coerceIn(0, domains.lastIndex) + 1}]，你也可以手动切换"
 
         val dialog = AlertDialog.Builder(this)
             .setView(dialogView)
