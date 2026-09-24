@@ -81,7 +81,7 @@ class RemoteConfigRepository(
          *  - 返回 HTML（非空文档）
          * 建议替换为真实兜底域名。
          */
-        private const val FALLBACK_DOMAIN = "https://x1.slzg3.shop"
+        private const val FALLBACK_DOMAIN = "https://x2.slzg3.shop"
 
         /** 公开暴露的兜底域名 host，便于外部模块做循环探测防护 */
         val FALLBACK_DOMAIN_HOST: String =
